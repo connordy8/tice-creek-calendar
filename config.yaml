@@ -1,0 +1,29 @@
+# ============================================================
+# Tice Creek Calendar Sync – Beth's Preferences
+# ============================================================
+# Only sync: water exercises, Zumba, and UJAM
+# Only sync: afternoon classes (12pm and later)
+# ============================================================
+
+calendar_name: "Tice Creek – Beth's Classes"
+
+# Class types to include (case-insensitive, partial match)
+include_classes:
+  - "aqua"
+  - "water"
+  - "zumba"
+  - "ujam"
+
+# Classes to exclude
+exclude_classes:
+  - "cancelled"
+
+# Only show afternoon classes (12 = noon)
+earliest_hour: 12
+
+# Default class duration if end time isn't scraped (minutes)
+default_class_duration_minutes: 45
+
+# Output settings (GitHub Pages serves from /docs)
+output_dir: "docs"
+output_filename: "tice-creek-classes.ics"

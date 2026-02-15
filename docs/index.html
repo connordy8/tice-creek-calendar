@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tice Creek Fitness Calendar</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 60px auto;
+            padding: 0 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 { color: #2c5f2d; }
+        .card {
+            background: #f7f9f7;
+            border: 1px solid #d4e6d4;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+        }
+        code {
+            background: #e8f0e8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .btn {
+            display: inline-block;
+            background: #2c5f2d;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 12px;
+        }
+        .btn:hover { background: #1e4620; }
+        .updated { color: #888; font-size: 0.85em; }
+    </style>
+</head>
+<body>
+    <h1>🏋️ Tice Creek Fitness Calendar</h1>
+    <p>Auto-synced class schedule for Tice Creek Fitness Center, Rossmoor.</p>
+
+    <div class="card">
+        <h2>Subscribe in Google Calendar</h2>
+        <p>Copy this URL and add it as a calendar subscription:</p>
+        <p><code id="ics-url">Loading...</code></p>
+        <button onclick="copyUrl()" style="cursor:pointer; padding: 8px 16px; border-radius: 6px; border: 1px solid #2c5f2d; background: white; color: #2c5f2d;">
+            📋 Copy URL
+        </button>
+
+        <h3 style="margin-top: 24px;">Quick steps:</h3>
+        <ol>
+            <li>Open <a href="https://calendar.google.com" target="_blank">Google Calendar</a></li>
+            <li>Click the <strong>+</strong> next to "Other calendars"</li>
+            <li>Select <strong>"From URL"</strong></li>
+            <li>Paste the URL above</li>
+            <li>Click <strong>"Add calendar"</strong></li>
+        </ol>
+        <p><em>Google refreshes subscribed calendars every ~12-24 hours automatically.</em></p>
+    </div>
+
+    <p class="updated">Calendar updates daily at 6 AM Pacific.</p>
+
+    <script>
+        const baseUrl = window.location.href.replace('index.html', '').replace(/\/$/, '');
+        const icsUrl = baseUrl + '/tice-creek-classes.ics';
+        document.getElementById('ics-url').textContent = icsUrl;
+
+        function copyUrl() {
+            navigator.clipboard.writeText(icsUrl).then(() => {
+                const btn = event.target;
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => btn.textContent = '📋 Copy URL', 2000);
+            });
+        }
+    </script>
+</body>
+</html>
