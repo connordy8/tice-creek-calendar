@@ -226,6 +226,7 @@ def generate_ics(classes, config):
     cal_name = config.get("calendar_name",
                           "Tice Creek Fitness \u2013 Mom's Classes")
     default_dur = config.get("default_class_duration_minutes", 45)
+    early_start = config.get("early_start_minutes", 0)
     now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
     lines = [
@@ -265,11 +266,32 @@ def generate_ics(classes, config):
         instructor = cls.get("instructor", "")
         source = cls.get("source", "")
 
+        # Apply custom titles from config
+        display_name = name
+        for rule in config.get("custom_titles", []):
+            match_name = rule.get("match_name", "").lower()
+            match_instr = rule.get("match_instructor", "").lower()
+            if match_name and match_name in name.lower():
+                if match_instr and match_instr in instructor.lower():
+                    display_name = rule["title"]
+                    break
+                elif not match_instr:
+                    display_name = rule["title"]
+                    break
+
         is_water = any(
             w in name.lower() for w in ["aqua", "water", "swim", "pool"])
         emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
 
         desc_parts = []
+        if early_start > 0:
+            real_time = cls.get("time", "")
+            end_time = cls.get("end_time", "")
+            if real_time and end_time:
+                desc_parts.append("Class time: {} - {}".format(
+                    real_time, end_time))
+            elif real_time:
+                desc_parts.append("Class time: {}".format(real_time))
         if instructor:
             desc_parts.append("Instructor: {}".format(instructor))
         if source:
@@ -279,6 +301,9 @@ def generate_ics(classes, config):
         newline = "\\n"
         description = newline.join(desc_parts)
 
+        # Shift start earlier so Beth leaves with buffer time
+        cal_start = start - timedelta(minutes=early_start)
+
         uid_str = "{}-{}-{}".format(name, cls.get("date", ""), start_iso)
         uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
 
@@ -287,10 +312,10 @@ def generate_ics(classes, config):
             "UID:{}@tice-creek-sync".format(uid),
             "DTSTAMP:{}".format(now_utc),
             "DTSTART;TZID=America/Los_Angeles:{}".format(
-                start.strftime("%Y%m%dT%H%M%S")),
+                cal_start.strftime("%Y%m%dT%H%M%S")),
             "DTEND;TZID=America/Los_Angeles:{}".format(
                 end.strftime("%Y%m%dT%H%M%S")),
-            "SUMMARY:{} {}".format(emoji, name),
+            "SUMMARY:{} {}".format(emoji, display_name),
             "DESCRIPTION:{}".format(description),
             "LOCATION:{}".format(LOCATION),
             "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
