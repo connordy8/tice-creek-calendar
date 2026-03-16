@@ -38,6 +38,13 @@ SCHEDULE_PAGES = {
     "aquatics": "https://www.ticefitnesscenter.com/aquatic-schedule/",
 }
 
+ROSSMOOR_MOVIE_PDF_URL = (
+    "https://rossmoor.com/residents/recreation/movies-and-special-events/"
+)
+MOVIE_LOCATION = (
+    "Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595"
+)
+
 DISCOVER_MODE = "--discover" in sys.argv
 HEADLESS = "--no-headless" not in sys.argv
 
@@ -251,13 +258,273 @@ def resolve_conflicts(classes):
 
 
 # =========================================================================
+# Movie scraping (Rossmoor Peacock Hall)
+# =========================================================================
+
+def download_movie_pdf(url=ROSSMOOR_MOVIE_PDF_URL):
+    """Download the Rossmoor Recreation Calendar PDF."""
+    import urllib.request
+    import tempfile
+
+    log.info("Downloading Rossmoor movie calendar PDF...")
+    req = urllib.request.Request(url, headers={
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/121.0.0.0 Safari/537.36"
+        ),
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = resp.read()
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp.write(data)
+    tmp.close()
+    log.info("  Downloaded {:,} bytes -> {}".format(len(data), tmp.name))
+    return tmp.name
+
+
+def parse_movie_pdf(pdf_path):
+    """Extract movie listings from the Rossmoor Recreation Calendar PDF.
+
+    Returns a list of dicts with keys:
+        title, movie_year, date, start_iso, start_hour, is_movie
+    """
+    import pdfplumber
+
+    movies = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if not text:
+                continue
+
+            # Find month/year header (e.g., "March 2026")
+            month_match = re.search(
+                r'(January|February|March|April|May|June|July|August|'
+                r'September|October|November|December)\s+(\d{4})', text)
+            if not month_match:
+                continue
+            month_name = month_match.group(1)
+            year = int(month_match.group(2))
+            month_num = datetime.strptime(month_name, "%B").month
+            log.info("  Parsing movie calendar for {} {}".format(
+                month_name, year))
+
+            lines = text.split('\n')
+            current_day = None
+
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+
+                # Detect day numbers: standalone 1-31, or at start of a line
+                # In the PDF, day numbers appear as standalone numbers
+                day_match = re.match(r'^(\d{1,2})$', line)
+                if day_match:
+                    d = int(day_match.group(1))
+                    if 1 <= d <= 31:
+                        current_day = d
+                    i += 1
+                    continue
+
+                # Check for movie line: Movie: "Title" (Year)
+                # Handle smart quotes and regular quotes
+                movie_match = re.search(
+                    r'Movie:\s*[\u201c"\u2018\'](.*?)[\u201d"\u2019\']\s*'
+                    r'\((\d{4})\)', line)
+                if movie_match and current_day:
+                    title = movie_match.group(1)
+                    movie_year = movie_match.group(2)
+
+                    # Gather time info from this line and the next
+                    times_text = line
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        # Only grab next line if it looks like times
+                        if re.search(r'\d.*[ap]\.m\.', next_line, re.IGNORECASE):
+                            times_text += " " + next_line
+                            i += 1
+
+                    showtimes = _parse_showtimes(
+                        times_text, year, month_num, current_day)
+
+                    for dt in showtimes:
+                        date_str = "{}-{:02d}-{:02d}".format(
+                            year, month_num, current_day)
+                        movies.append({
+                            "title": title,
+                            "movie_year": movie_year,
+                            "date": date_str,
+                            "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
+                            "start_hour": dt.hour,
+                            "start_dt": dt,
+                            "is_movie": True,
+                        })
+
+                i += 1
+
+    log.info("  Parsed {} total movie showings from PDF".format(len(movies)))
+    return movies
+
+
+def _parse_showtimes(text, year, month, day):
+    """Parse showtime strings like '1, 4, 7 p.m.' into datetime objects.
+
+    Handles formats:
+        '1, 4, 7 p.m. PH'
+        '10 a.m., 1, 4, 7 p.m. PH'
+        '10 a.m., 1, 4, 7, 9:15 p.m. PH'
+        '4 p.m. PH'
+    """
+    times = []
+
+    # Extract just the time portion (before PH/EC/FR etc.)
+    time_section = re.search(
+        r'([\d,:\s.]+(?:a\.m\.|p\.m\.)(?:\s*,?\s*[\d,:\s.]*'
+        r'(?:a\.m\.|p\.m\.)?)*)',
+        text, re.IGNORECASE)
+    if not time_section:
+        return times
+
+    time_str = time_section.group(1).strip()
+
+    # Split by comma and process right-to-left to inherit AM/PM
+    segments = [s.strip() for s in time_str.split(',')]
+    parsed = []
+    current_period = None
+
+    for seg in reversed(segments):
+        seg = seg.strip()
+        if not seg:
+            continue
+
+        period_match = re.search(r'(a\.m\.|p\.m\.)', seg, re.IGNORECASE)
+        if period_match:
+            current_period = (
+                "AM" if "a.m." in period_match.group().lower() else "PM")
+
+        time_val = re.search(r'(\d{1,2})(?::(\d{2}))?', seg)
+        if time_val and current_period:
+            hour = int(time_val.group(1))
+            minute = int(time_val.group(2)) if time_val.group(2) else 0
+
+            if current_period == "PM" and hour != 12:
+                hour += 12
+            elif current_period == "AM" and hour == 12:
+                hour = 0
+
+            try:
+                dt = datetime(year, month, day, hour, minute)
+                parsed.append(dt)
+            except ValueError:
+                pass
+
+    parsed.reverse()
+    return parsed
+
+
+def fetch_movie_description(title, year):
+    """Fetch a 1-3 sentence movie description from Wikipedia."""
+    import urllib.request
+    import urllib.parse
+
+    search_terms = [
+        "{} ({} film)".format(title, year),
+        "{} (film)".format(title),
+        title,
+    ]
+
+    for term in search_terms:
+        encoded = urllib.parse.quote(term.replace(' ', '_'))
+        url = (
+            "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
+            .format(encoded))
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "TiceCreekCalendar/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+                extract = data.get("extract", "")
+                if extract and len(extract) > 20:
+                    sentences = re.split(r'(?<=[.!?])\s+', extract)
+                    desc = ' '.join(sentences[:3])
+                    if len(desc) > 500:
+                        desc = desc[:497] + "..."
+                    return desc
+        except Exception:
+            continue
+
+    return ""
+
+
+def scrape_movies(config):
+    """Scrape Rossmoor movie listings and return evening showings as events."""
+    if not config.get("include_movies", True):
+        log.info("Movies disabled in config, skipping")
+        return []
+
+    min_hour = config.get("movie_earliest_hour", 18)  # 6 PM default
+
+    try:
+        pdf_path = download_movie_pdf()
+    except Exception as e:
+        log.warning("Failed to download movie PDF: {}".format(e))
+        return []
+
+    try:
+        all_showings = parse_movie_pdf(pdf_path)
+    except Exception as e:
+        log.warning("Failed to parse movie PDF: {}".format(e))
+        return []
+    finally:
+        import os
+        try:
+            os.unlink(pdf_path)
+        except OSError:
+            pass
+
+    # Filter to evening showings only
+    evening = [m for m in all_showings if m["start_hour"] >= min_hour]
+    log.info("  Evening showings ({}:00+): {}".format(min_hour, len(evening)))
+
+    # Deduplicate movies by title for description lookup
+    unique_titles = {}
+    for m in evening:
+        key = (m["title"], m["movie_year"])
+        if key not in unique_titles:
+            unique_titles[key] = None
+
+    # Fetch descriptions
+    log.info("  Fetching descriptions for {} unique movies...".format(
+        len(unique_titles)))
+    for (title, movie_year) in unique_titles:
+        desc = fetch_movie_description(title, movie_year)
+        unique_titles[(title, movie_year)] = desc
+        if desc:
+            log.info("    {} ({}) - got description".format(title, movie_year))
+        else:
+            log.info("    {} ({}) - no description found".format(
+                title, movie_year))
+
+    # Attach descriptions to showings
+    for m in evening:
+        m["description"] = unique_titles.get(
+            (m["title"], m["movie_year"]), "")
+
+    return evening
+
+
+# =========================================================================
 # ICS generation
 # =========================================================================
 
-def generate_ics(classes, config):
+def generate_ics(classes, config, movies=None):
     cal_name = config.get("calendar_name",
                           "Tice Creek Fitness \u2013 Mom's Classes")
     default_dur = config.get("default_class_duration_minutes", 45)
+    movie_dur = config.get("movie_duration_minutes", 135)
     early_start = config.get("early_start_minutes", 0)
     now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
@@ -280,6 +547,8 @@ def generate_ics(classes, config):
     ]
 
     count = 0
+
+    # --- Fitness classes ---
     for cls in classes:
         start_iso = cls.get("start_iso", "")
         if not start_iso:
@@ -355,8 +624,59 @@ def generate_ics(classes, config):
         ])
         count += 1
 
+    # --- Movie events ---
+    for mov in (movies or []):
+        start_iso = mov.get("start_iso", "")
+        if not start_iso:
+            continue
+        try:
+            start = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        end = start + timedelta(minutes=movie_dur)
+        title = mov["title"]
+        movie_year = mov.get("movie_year", "")
+
+        display_name = "{} ({})".format(title, movie_year)
+
+        desc_parts = []
+        movie_desc = mov.get("description", "")
+        if movie_desc:
+            desc_parts.append(movie_desc)
+        show_time = start.strftime("%I:%M %p").lstrip("0")
+        desc_parts.append("Showtime: {} at Peacock Hall".format(show_time))
+        desc_parts.append("Free admission")
+        desc_parts.append("Auto-synced from rossmoor.com recreation calendar")
+        newline = "\\n"
+        description = newline.join(desc_parts)
+
+        # Apply early start for travel time
+        cal_start = start - timedelta(minutes=early_start)
+
+        uid_str = "movie-{}-{}-{}".format(title, mov.get("date", ""),
+                                          start_iso)
+        uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            "UID:{}@tice-creek-sync".format(uid),
+            "DTSTAMP:{}".format(now_utc),
+            "DTSTART;TZID=America/Los_Angeles:{}".format(
+                cal_start.strftime("%Y%m%dT%H%M%S")),
+            "DTEND;TZID=America/Los_Angeles:{}".format(
+                end.strftime("%Y%m%dT%H%M%S")),
+            "SUMMARY:\U0001f3ac {}".format(display_name),
+            "DESCRIPTION:{}".format(description),
+            "LOCATION:{}".format(MOVIE_LOCATION),
+            "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ])
+        count += 1
+
     lines.append("END:VCALENDAR")
-    log.info("Generated {} calendar events".format(count))
+    log.info("Generated {} calendar events ({} classes, {} movies)".format(
+        count, count - len(movies or []), len(movies or [])))
     return "\r\n".join(lines)
 
 
@@ -561,12 +881,28 @@ def main():
                 cls.get("time", ""), cls.get("name", ""),
                 cls.get("instructor", "")))
 
+    # Scrape Rossmoor movie listings
+    log.info("")
+    log.info("=" * 60)
+    log.info("Rossmoor Peacock Hall \u2013 Movie Sync")
+    log.info("=" * 60)
+    movies = scrape_movies(config)
+    if movies:
+        log.info("")
+        log.info("Evening movies this month:")
+        for mov in movies:
+            log.info("  {} {} - {} ({})".format(
+                mov.get("date", ""),
+                datetime.fromisoformat(mov["start_iso"]).strftime(
+                    "%I:%M %p").lstrip("0"),
+                mov["title"], mov["movie_year"]))
+
     # Generate ICS
-    ics = generate_ics(filtered, config)
+    ics = generate_ics(filtered, config, movies=movies)
     output_file.write_text(ics)
     log.info("")
-    log.info("\u2705 Calendar -> {} ({:,} bytes, {} events)".format(
-        output_file, output_file.stat().st_size, len(filtered)))
+    log.info("\u2705 Calendar -> {} ({:,} bytes, {} classes + {} movies)".format(
+        output_file, output_file.stat().st_size, len(filtered), len(movies)))
 
 
 if __name__ == "__main__":

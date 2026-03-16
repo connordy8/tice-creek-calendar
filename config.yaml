@@ -41,6 +41,16 @@ custom_titles:
 # Default class duration if end time isn't scraped (minutes)
 default_class_duration_minutes: 45
 
+# --- Rossmoor Movie Settings ---
+# Scrape the Peacock Hall movie calendar from rossmoor.com
+include_movies: true
+
+# Only include showings at or after this hour (18 = 6 PM)
+movie_earliest_hour: 18
+
+# Default movie duration in minutes (most are ~2 hours)
+movie_duration_minutes: 135
+
 # Output settings (GitHub Pages serves from /docs)
 output_dir: "docs"
 output_filename: "tice-creek-classes.ics"
