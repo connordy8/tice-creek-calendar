@@ -23,63 +23,8 @@ RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
 END:STANDARD
 END:VTIMEZONE
 BEGIN:VEVENT
-UID:a920640f8969c061@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260316T131500
-DTEND;TZID=America/Los_Angeles:20260316T160000
-SUMMARY:🏋️ Pickleball Club OPEN PLAY
-DESCRIPTION:Class time: 1:30 PM - 4:00 PM\nInstructor: CLUB CLASS\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:25b2cb0bc38b49ad@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260316T174500
-DTEND;TZID=America/Los_Angeles:20260316T203000
-SUMMARY:🏋️ Open Pickleball
-DESCRIPTION:Class time: 6:00 PM - 8:30 PM\nInstructor: Pickleball Club\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:22c8ac0eb76a6093@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260317T144500
-DTEND;TZID=America/Los_Angeles:20260317T155000
-SUMMARY:🏋️ Restorative Yoga
-DESCRIPTION:Class time: 3:00 PM - 3:50 PM\nInstructor: Nora Pallotta\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:fd457275c88bee3e@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260317T174500
-DTEND;TZID=America/Los_Angeles:20260317T203000
-SUMMARY:🏋️ OPEN PICKLEBALL
-DESCRIPTION:Class time: 6:00 PM - 8:30 PM\nInstructor: open play\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:fbaf2cef7a70e644@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260317T174500
-DTEND;TZID=America/Los_Angeles:20260317T203000
-SUMMARY:🏋️ Open Pickleball
-DESCRIPTION:Class time: 6:00 PM - 8:30 PM\nInstructor: Pickleball Club\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
 UID:7a9bae66b83a5d08@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260318T124500
 DTEND;TZID=America/Los_Angeles:20260318T135000
 SUMMARY:🏋️ UJAM and Stretch
@@ -90,7 +35,7 @@ TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
 UID:25e3585ab3220de0@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260318T134500
 DTEND;TZID=America/Los_Angeles:20260318T145000
 SUMMARY:🏋️ Mat Yoga
@@ -101,7 +46,7 @@ TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
 UID:6708630ed5e6787b@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260318T171500
 DTEND;TZID=America/Los_Angeles:20260318T182000
 SUMMARY:🏋️ Zumba w/ Sabrina
@@ -112,7 +57,7 @@ TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
 UID:17bcb936e9703d60@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260319T164500
 DTEND;TZID=America/Los_Angeles:20260319T175000
 SUMMARY:🏋️ UJAM and Stretch
@@ -122,19 +67,8 @@ STATUS:CONFIRMED
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
-UID:f8b2eee7c7353ec9@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260319T174500
-DTEND;TZID=America/Los_Angeles:20260319T203000
-SUMMARY:🏋️ Open Pickleball
-DESCRIPTION:Class time: 6:00 PM - 8:30 PM\nInstructor: Pickleball Club\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
 UID:ad79f857aba55933@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260320T124500
 DTEND;TZID=America/Los_Angeles:20260320T135000
 SUMMARY:🏋️ Zumba w/ Sabrina
@@ -144,41 +78,19 @@ STATUS:CONFIRMED
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
-UID:8fecb6e5684228c0@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260320T174500
-DTEND;TZID=America/Los_Angeles:20260320T203000
-SUMMARY:🏋️ Open Pickleball
-DESCRIPTION:Class time: 6:00 PM - 8:30 PM\nInstructor: Pickleball Club\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:849ced9b894613dc@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260321T094500
-DTEND;TZID=America/Los_Angeles:20260321T105000
-SUMMARY:🏋️ Zumba w/ Sabrina
-DESCRIPTION:Class time: 10:00 AM - 10:50 AM\nInstructor: Sabrina Monahan\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:93cd42a30a394630@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260322T114500
-DTEND;TZID=America/Los_Angeles:20260322T130000
-SUMMARY:🏋️ Pickleball CLUB Novice
-DESCRIPTION:Class time: 12:00 PM - 1:00 PM\nInstructor: CLUB CLASS\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+UID:7918207b07f80f01@tice-creek-sync
+DTSTAMP:20260316T194450Z
+DTSTART;TZID=America/Los_Angeles:20260321T111500
+DTEND;TZID=America/Los_Angeles:20260321T122000
+SUMMARY:🏋️ Posture, Balance, Core and Strength
+DESCRIPTION:Class time: 11:30 AM - 12:20 PM\nInstructor: Terry Hummel\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
 LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
 STATUS:CONFIRMED
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
 UID:671378a3382fdd61@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260322T121500
 DTEND;TZID=America/Los_Angeles:20260322T132000
 SUMMARY:🏋️ Mat Yoga
@@ -189,7 +101,7 @@ TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
 UID:505a78f9b321515e@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260322T151500
 DTEND;TZID=America/Los_Angeles:20260322T162000
 SUMMARY:🏋️ UJAM and Stretch
@@ -199,67 +111,12 @@ STATUS:CONFIRMED
 TRANSP:TRANSPARENT
 END:VEVENT
 BEGIN:VEVENT
-UID:6c9ec33dcd85de66@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260322T154500
-DTEND;TZID=America/Los_Angeles:20260322T180000
-SUMMARY:🏋️ Pickleball Club OPEN PLAY
-DESCRIPTION:Class time: 4:00 PM - 6:00 PM\nInstructor: CLUB CLASS\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:6091db35a5922d2b@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260317T104500
-DTEND;TZID=America/Los_Angeles:20260317T115000
-SUMMARY:🏊 Aqua: Deep Water Aerobics
-DESCRIPTION:Class time: 11:00 AM - 11:50 AM\nInstructor: Sally Gearhart\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:95dd5baf50af2f2a@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260318T094500
-DTEND;TZID=America/Los_Angeles:20260318T104500
-SUMMARY:🏊 Water Aerobics
-DESCRIPTION:Class time: 10:00 AM - 10:45 AM\nInstructor: CATHY STEEN\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
 UID:76e2504fa2979c48@tice-creek-sync
-DTSTAMP:20260316T183122Z
+DTSTAMP:20260316T194450Z
 DTSTART;TZID=America/Los_Angeles:20260318T111500
 DTEND;TZID=America/Los_Angeles:20260318T122000
-SUMMARY:🏊 Aqua:  Aquacise
+SUMMARY:🏊 Aquacise w/ Bob
 DESCRIPTION:Class time: 11:30 AM - 12:20 PM\nInstructor: BOB HUFF\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:d5141a5a6b8b3e59@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260320T094500
-DTEND;TZID=America/Los_Angeles:20260320T104500
-SUMMARY:🏊 Water Aerobics
-DESCRIPTION:Class time: 10:00 AM - 10:45 AM\nInstructor: CATHY STEEN\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
-LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
-STATUS:CONFIRMED
-TRANSP:TRANSPARENT
-END:VEVENT
-BEGIN:VEVENT
-UID:b79eaae6bee8d19a@tice-creek-sync
-DTSTAMP:20260316T183122Z
-DTSTART;TZID=America/Los_Angeles:20260320T104500
-DTEND;TZID=America/Los_Angeles:20260320T115000
-SUMMARY:🏊 Aqua: Deep Water Aerobics
-DESCRIPTION:Class time: 11:00 AM - 11:50 AM\nInstructor: Sally Gearhart\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
 LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
 STATUS:CONFIRMED
 TRANSP:TRANSPARENT
