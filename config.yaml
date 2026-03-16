@@ -1,7 +1,7 @@
 # ============================================================
 # Tice Creek Calendar Sync – Beth's Preferences
 # ============================================================
-# Sync: water exercises, aquacise, Zumba, UJAM, and select pickleball
+# Sync: water exercises, aquacise, Zumba, UJAM, yoga, and select pickleball
 # Only sync: classes at 10am or later
 # ============================================================
 
@@ -17,6 +17,8 @@ include_classes:
   - "pickleball_club_open_play"
   - "open_pickleball"
   - "aquacise"
+  - "mat_yoga"
+  - "restorative_yoga"
 
 # Classes to exclude
 exclude_classes:
