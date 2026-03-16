@@ -1,1 +1,15 @@
-[]
+[
+  {
+    "uid": "4945e6ea51754e45",
+    "type": "modify",
+    "original_class": "zumba club",
+    "title": "Zumba Club",
+    "date": "2026-04-02",
+    "start_time": "10:45",
+    "end_time": "11:45",
+    "location": "Tice Creek Fitness Center - Aerobics Room",
+    "notes": "One-time schedule change due to special event at fitness center. Katy teaching. Carol hopes to return by this date.",
+    "source": "Forwarded from Carol Lehr",
+    "created": "2026-03-16 23:10"
+  }
+]
