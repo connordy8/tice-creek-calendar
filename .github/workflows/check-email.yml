@@ -1,0 +1,52 @@
+name: Check Email Updates
+
+on:
+  # Every 30 minutes during waking hours (8am-9pm Pacific = 4pm-5am UTC)
+  schedule:
+    - cron: "*/30 * * * *"
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml anthropic
+
+      - name: Check email for calendar updates
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python email_handler.py
+
+      - name: Commit email updates if any
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manual_events.json
+          if [ ! -f manual_events.json ]; then
+            echo "No manual events file created"
+            exit 0
+          fi
+          if git diff --cached --quiet; then
+            echo "No new email updates"
+          else
+            git commit -m "Email calendar update [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git push
+          fi

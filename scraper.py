@@ -703,7 +703,13 @@ def generate_fitness_ics(classes, config):
         if source:
             desc_parts.append("Schedule: {}".format(
                 source.replace("_", " ").title()))
-        desc_parts.append("Auto-synced from ticefitnesscenter.com")
+        email_notes = cls.get("email_notes", "")
+        if email_notes:
+            desc_parts.append("Note: {}".format(email_notes))
+        if cls.get("is_manual"):
+            desc_parts.append("Added via email to bethcalendarupdate@gmail.com")
+        else:
+            desc_parts.append("Auto-synced from ticefitnesscenter.com")
         newline = "\\n"
         description = newline.join(desc_parts)
 
@@ -722,7 +728,8 @@ def generate_fitness_ics(classes, config):
                 end.strftime("%Y%m%dT%H%M%S")),
             "SUMMARY:{} {}".format(emoji, display_name),
             "DESCRIPTION:{}".format(description),
-            "LOCATION:{}".format(LOCATION),
+            "LOCATION:{}".format(
+                cls.get("location") or LOCATION),
             "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
             "END:VEVENT",
         ])
@@ -853,6 +860,145 @@ def generate_entertainment_ics(movies, concerts, config):
     log.info("Generated {} entertainment events ({} movies, {} concerts)".format(
         count, len(movies or []), len(concerts or [])))
     return "\r\n".join(lines), count
+
+
+# =========================================================================
+# Manual events (from email handler)
+# =========================================================================
+
+MANUAL_EVENTS_FILE = Path("manual_events.json")
+
+
+def load_manual_events():
+    """Load manual events created by the email handler."""
+    if not MANUAL_EVENTS_FILE.exists():
+        return []
+    try:
+        with open(MANUAL_EVENTS_FILE) as f:
+            events = json.load(f)
+        if not isinstance(events, list):
+            return []
+        log.info("Loaded {} manual event(s) from email handler".format(
+            len(events)))
+        return events
+    except (json.JSONDecodeError, IOError) as e:
+        log.warning("Could not load manual events: {}".format(e))
+        return []
+
+
+def apply_manual_events(classes, manual_events):
+    """Apply email-sourced changes to the scraped class list.
+
+    Handles three action types:
+      - cancel: remove matching class on that date
+      - modify: replace matching class with new time/details
+      - add: inject a new event into the class list
+    """
+    cancels = [e for e in manual_events if e.get("type") == "cancel"]
+    modifies = [e for e in manual_events if e.get("type") == "modify"]
+    adds = [e for e in manual_events if e.get("type") == "add"]
+
+    # Apply cancellations
+    for cancel in cancels:
+        target = cancel.get("original_class", "").lower()
+        target_date = cancel.get("date", "")
+        if not target or not target_date:
+            continue
+        before = len(classes)
+        classes = [
+            c for c in classes
+            if not (c.get("date") == target_date
+                    and target in c.get("name", "").lower())
+        ]
+        removed = before - len(classes)
+        if removed:
+            log.info("  Cancelled {} event(s) matching '{}' on {}".format(
+                removed, target, target_date))
+
+    # Apply modifications
+    for mod in modifies:
+        target = mod.get("original_class", "").lower()
+        target_date = mod.get("date", "")
+        new_time = mod.get("start_time", "")
+        if not target or not target_date:
+            continue
+
+        for cls in classes:
+            if (cls.get("date") == target_date
+                    and target in cls.get("name", "").lower()):
+                if new_time:
+                    # Update start time
+                    new_iso = "{}T{}".format(target_date, new_time)
+                    cls["start_iso"] = new_iso
+                    try:
+                        new_dt = datetime.fromisoformat(new_iso)
+                        cls["time"] = new_dt.strftime(
+                            "%I:%M %p").lstrip("0")
+                        cls["start_hour"] = new_dt.hour
+                    except ValueError:
+                        pass
+                if mod.get("end_time"):
+                    end_iso = "{}T{}".format(target_date, mod["end_time"])
+                    cls["end_iso"] = end_iso
+                    try:
+                        end_dt = datetime.fromisoformat(end_iso)
+                        start_dt = datetime.fromisoformat(cls["start_iso"])
+                        cls["end_time"] = end_dt.strftime(
+                            "%I:%M %p").lstrip("0")
+                        cls["duration_minutes"] = int(
+                            (end_dt - start_dt).total_seconds() / 60)
+                    except ValueError:
+                        pass
+                notes = mod.get("notes", "")
+                if notes:
+                    cls["email_notes"] = notes
+                log.info("  Modified '{}' on {} -> {}".format(
+                    target, target_date, new_time or "updated"))
+
+    # Apply additions (new events from email)
+    for add_evt in adds:
+        date = add_evt.get("date", "")
+        start_time = add_evt.get("start_time", "")
+        if not date or not start_time:
+            continue
+
+        start_iso = "{}T{}".format(date, start_time)
+        try:
+            start_dt = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        end_time = add_evt.get("end_time", "")
+        duration = 60  # default 1 hour for manual events
+        if end_time:
+            try:
+                end_dt = datetime.fromisoformat(
+                    "{}T{}".format(date, end_time))
+                duration = int((end_dt - start_dt).total_seconds() / 60)
+            except ValueError:
+                pass
+
+        new_cls = {
+            "name": add_evt.get("title", "Event"),
+            "raw_name": "email_event",
+            "start_iso": start_iso,
+            "end_iso": "{}T{}".format(date, end_time) if end_time else "",
+            "date": date,
+            "day": start_dt.strftime("%A"),
+            "time": start_dt.strftime("%I:%M %p").lstrip("0"),
+            "start_hour": start_dt.hour,
+            "instructor": "",
+            "source": "email",
+            "duration_minutes": duration,
+            "location": add_evt.get("location", ""),
+            "email_notes": add_evt.get("notes", ""),
+            "is_manual": True,
+        }
+        classes.append(new_cls)
+        log.info("  Added email event: '{}' on {} at {}".format(
+            new_cls["name"], date, start_time))
+
+    return classes
 
 
 # =========================================================================
@@ -1086,6 +1232,11 @@ def main():
                     "%I:%M %p").lstrip("0"),
                 evt["title"],
                 "({})".format(evt["cost"]) if evt.get("cost") else "(Free)"))
+
+    # Load manual events from email handler
+    manual_events = load_manual_events()
+    if manual_events:
+        filtered = apply_manual_events(filtered, manual_events)
 
     # Generate separate ICS files
     fitness_ics, fitness_count = generate_fitness_ics(filtered, config)

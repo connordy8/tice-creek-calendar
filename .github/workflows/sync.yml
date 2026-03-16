@@ -1,7 +1,7 @@
 name: Sync Tice Creek Schedule
 
 on:
-  # Run daily at 6 AM Pacific (2 PM UTC)
+  # Full sync daily at 6 AM Pacific (2 PM UTC)
   schedule:
     - cron: "0 14 * * *"
 
@@ -14,6 +14,7 @@ on:
     paths:
       - "config.yaml"
       - "scraper.py"
+      - "email_handler.py"
 
 # Grant write permission to push updated ICS file
 permissions:
@@ -39,6 +40,13 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
+      - name: Check email for calendar updates
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python email_handler.py
+
       - name: Run scraper
         run: python scraper.py
 
@@ -54,10 +62,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/
+          git add docs/ manual_events.json
           if git diff --cached --quiet; then
             echo "No changes to calendar"
           else
-            git commit -m "Update Tice Creek class schedule [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git commit -m "Update Tice Creek calendar [$(date -u +'%Y-%m-%d %H:%M UTC')]"
             git push
           fi
