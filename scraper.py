@@ -218,6 +218,38 @@ def filter_classes(classes, config):
     return filtered
 
 
+def resolve_conflicts(classes):
+    """When Zumba overlaps with another class, keep only Zumba."""
+    to_remove = set()
+    for i, a in enumerate(classes):
+        for j, b in enumerate(classes):
+            if i >= j:
+                continue
+            a_start = a.get("start_iso", "")
+            b_start = b.get("start_iso", "")
+            a_end = a.get("end_iso", a_start)
+            b_end = b.get("end_iso", b_start)
+            if not (a_start and b_start):
+                continue
+            # Check overlap: two events overlap if one starts before the other ends
+            if a_start < b_end and b_start < a_end:
+                a_is_zumba = "zumba" in a.get("raw_name", "").lower() or "zumba" in a.get("name", "").lower()
+                b_is_zumba = "zumba" in b.get("raw_name", "").lower() or "zumba" in b.get("name", "").lower()
+                if a_is_zumba and not b_is_zumba:
+                    to_remove.add(j)
+                    log.info("Conflict: keeping '{}' over '{}'".format(
+                        a.get("name"), b.get("name")))
+                elif b_is_zumba and not a_is_zumba:
+                    to_remove.add(i)
+                    log.info("Conflict: keeping '{}' over '{}'".format(
+                        b.get("name"), a.get("name")))
+    if to_remove:
+        classes = [c for idx, c in enumerate(classes) if idx not in to_remove]
+        log.info("Resolved conflicts: removed {} overlapping classes".format(
+            len(to_remove)))
+    return classes
+
+
 # =========================================================================
 # ICS generation
 # =========================================================================
@@ -516,6 +548,9 @@ def main():
 
     # Filter to Beth's preferences
     filtered = filter_classes(all_classes, config)
+
+    # Resolve conflicts (Zumba wins over overlapping classes)
+    filtered = resolve_conflicts(filtered)
 
     if filtered:
         log.info("")
