@@ -45,6 +45,15 @@ MOVIE_LOCATION = (
     "Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595"
 )
 
+# Location codes from the PDF legend
+ROSSMOOR_LOCATIONS = {
+    "PH": "Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595",
+    "EC": "Event Center, 1021 Stanley Dollar Dr, Walnut Creek, CA 94595",
+    "FR": "Fireside Room, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595",
+    "G": "Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595",
+    "CR": "Creekside, Rossmoor, Walnut Creek, CA 94595",
+}
+
 DISCOVER_MODE = "--discover" in sys.argv
 HEADLESS = "--no-headless" not in sys.argv
 
@@ -308,15 +317,15 @@ def download_movie_pdf(url=ROSSMOOR_MOVIE_PDF_URL):
     return tmp.name
 
 
-def parse_movie_pdf(pdf_path):
-    """Extract movie listings from the Rossmoor Recreation Calendar PDF.
+def parse_recreation_pdf(pdf_path):
+    """Extract movie AND concert/event listings from the Rossmoor PDF.
 
-    Returns a list of dicts with keys:
-        title, movie_year, date, start_iso, start_hour, is_movie
+    Returns (movies, concerts) where each is a list of dicts.
     """
     import pdfplumber
 
     movies = []
+    concerts = []
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -333,7 +342,7 @@ def parse_movie_pdf(pdf_path):
             month_name = month_match.group(1)
             year = int(month_match.group(2))
             month_num = datetime.strptime(month_name, "%B").month
-            log.info("  Parsing movie calendar for {} {}".format(
+            log.info("  Parsing recreation calendar for {} {}".format(
                 month_name, year))
 
             lines = text.split('\n')
@@ -343,8 +352,7 @@ def parse_movie_pdf(pdf_path):
             while i < len(lines):
                 line = lines[i].strip()
 
-                # Detect day numbers: standalone 1-31, or at start of a line
-                # In the PDF, day numbers appear as standalone numbers
+                # Detect day numbers: standalone 1-31
                 day_match = re.match(r'^(\d{1,2})$', line)
                 if day_match:
                     d = int(day_match.group(1))
@@ -353,8 +361,7 @@ def parse_movie_pdf(pdf_path):
                     i += 1
                     continue
 
-                # Check for movie line: Movie: "Title" (Year)
-                # Handle smart quotes and regular quotes
+                # --- Movies: Movie: "Title" (Year) ---
                 movie_match = re.search(
                     r'Movie:\s*[\u201c"\u2018\'](.*?)[\u201d"\u2019\']\s*'
                     r'\((\d{4})\)', line)
@@ -362,11 +369,9 @@ def parse_movie_pdf(pdf_path):
                     title = movie_match.group(1)
                     movie_year = movie_match.group(2)
 
-                    # Gather time info from this line and the next
                     times_text = line
                     if i + 1 < len(lines):
                         next_line = lines[i + 1].strip()
-                        # Only grab next line if it looks like times
                         if re.search(r'\d.*[ap]\.m\.', next_line, re.IGNORECASE):
                             times_text += " " + next_line
                             i += 1
@@ -386,11 +391,71 @@ def parse_movie_pdf(pdf_path):
                             "start_dt": dt,
                             "is_movie": True,
                         })
+                    i += 1
+                    continue
+
+                # --- Concerts & Spotlight events ---
+                # Match: Concert: "Name" or The Spotlight: Name
+                concert_match = re.search(
+                    r'(Concert|The Spotlight):\s*[\u201c"\u2018\']?'
+                    r'(.*?)[\u201d"\u2019\']?\s*$', line)
+                if concert_match and current_day:
+                    event_type = concert_match.group(1).strip()
+                    event_name = concert_match.group(2).strip()
+                    # Clean up trailing quotes
+                    event_name = event_name.strip('\u201c\u201d"\'')
+
+                    # Gather time + location + cost from next line(s)
+                    times_text = ""
+                    cost = ""
+                    location_code = ""
+                    for look_ahead in range(1, 4):
+                        if i + look_ahead >= len(lines):
+                            break
+                        next_line = lines[i + look_ahead].strip()
+                        if re.search(r'[ap]\.m\.', next_line, re.IGNORECASE):
+                            times_text += " " + next_line
+                            # Extract cost like ($22) or ($18)
+                            cost_match = re.search(
+                                r'\(\$(\d+)\)', next_line)
+                            if cost_match:
+                                cost = "${}".format(cost_match.group(1))
+                            # Extract location code
+                            for code in ["EC", "FR", "PH", "CR", "G"]:
+                                if code in next_line.split():
+                                    location_code = code
+                                    break
+                            i += 1
+                        else:
+                            break
+
+                    if not times_text:
+                        i += 1
+                        continue
+
+                    showtimes = _parse_showtimes(
+                        times_text, year, month_num, current_day)
+
+                    for dt in showtimes:
+                        date_str = "{}-{:02d}-{:02d}".format(
+                            year, month_num, current_day)
+                        concerts.append({
+                            "title": event_name,
+                            "event_type": event_type,
+                            "date": date_str,
+                            "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
+                            "start_hour": dt.hour,
+                            "start_dt": dt,
+                            "cost": cost,
+                            "location_code": location_code,
+                            "is_concert": True,
+                        })
 
                 i += 1
 
-    log.info("  Parsed {} total movie showings from PDF".format(len(movies)))
-    return movies
+    log.info("  Parsed {} movie showings, {} concerts/events from PDF".format(
+        len(movies), len(concerts)))
+    return movies, concerts
 
 
 def _parse_showtimes(text, year, month, day):
@@ -483,25 +548,28 @@ def fetch_movie_description(title, year):
     return ""
 
 
-def scrape_movies(config):
-    """Scrape Rossmoor movie listings and return evening showings as events."""
-    if not config.get("include_movies", True):
-        log.info("Movies disabled in config, skipping")
-        return []
+def scrape_entertainment(config):
+    """Scrape Rossmoor movie + concert listings and return evening events."""
+    include_movies = config.get("include_movies", True)
+    include_concerts = config.get("include_concerts", True)
+
+    if not include_movies and not include_concerts:
+        log.info("Movies and concerts disabled in config, skipping")
+        return [], []
 
     min_hour = config.get("movie_earliest_hour", 18)  # 6 PM default
 
     try:
         pdf_path = download_movie_pdf()
     except Exception as e:
-        log.warning("Failed to download movie PDF: {}".format(e))
-        return []
+        log.warning("Failed to download recreation PDF: {}".format(e))
+        return [], []
 
     try:
-        all_showings = parse_movie_pdf(pdf_path)
+        all_movies, all_concerts = parse_recreation_pdf(pdf_path)
     except Exception as e:
-        log.warning("Failed to parse movie PDF: {}".format(e))
-        return []
+        log.warning("Failed to parse recreation PDF: {}".format(e))
+        return [], []
     finally:
         import os
         try:
@@ -509,50 +577,54 @@ def scrape_movies(config):
         except OSError:
             pass
 
-    # Filter to evening showings only
-    evening = [m for m in all_showings if m["start_hour"] >= min_hour]
-    log.info("  Evening showings ({}:00+): {}".format(min_hour, len(evening)))
+    # --- Filter movies to evening showings ---
+    evening_movies = []
+    if include_movies:
+        evening_movies = [m for m in all_movies if m["start_hour"] >= min_hour]
+        log.info("  Evening movies ({}:00+): {}".format(
+            min_hour, len(evening_movies)))
 
-    # Deduplicate movies by title for description lookup
-    unique_titles = {}
-    for m in evening:
-        key = (m["title"], m["movie_year"])
-        if key not in unique_titles:
-            unique_titles[key] = None
+        # Fetch Wikipedia descriptions
+        unique_titles = {}
+        for m in evening_movies:
+            key = (m["title"], m["movie_year"])
+            if key not in unique_titles:
+                unique_titles[key] = None
 
-    # Fetch descriptions
-    log.info("  Fetching descriptions for {} unique movies...".format(
-        len(unique_titles)))
-    for (title, movie_year) in unique_titles:
-        desc = fetch_movie_description(title, movie_year)
-        unique_titles[(title, movie_year)] = desc
-        if desc:
-            log.info("    {} ({}) - got description".format(title, movie_year))
-        else:
-            log.info("    {} ({}) - no description found".format(
-                title, movie_year))
+        log.info("  Fetching descriptions for {} unique movies...".format(
+            len(unique_titles)))
+        for (title, movie_year) in unique_titles:
+            desc = fetch_movie_description(title, movie_year)
+            unique_titles[(title, movie_year)] = desc
+            if desc:
+                log.info("    {} ({}) - got description".format(
+                    title, movie_year))
+            else:
+                log.info("    {} ({}) - no description found".format(
+                    title, movie_year))
 
-    # Attach descriptions to showings
-    for m in evening:
-        m["description"] = unique_titles.get(
-            (m["title"], m["movie_year"]), "")
+        for m in evening_movies:
+            m["description"] = unique_titles.get(
+                (m["title"], m["movie_year"]), "")
 
-    return evening
+    # --- Filter concerts to evening ---
+    evening_concerts = []
+    if include_concerts:
+        evening_concerts = [
+            c for c in all_concerts if c["start_hour"] >= min_hour]
+        log.info("  Evening concerts ({}:00+): {}".format(
+            min_hour, len(evening_concerts)))
+
+    return evening_movies, evening_concerts
 
 
 # =========================================================================
 # ICS generation
 # =========================================================================
 
-def generate_ics(classes, config, movies=None):
-    cal_name = config.get("calendar_name",
-                          "Tice Creek Fitness \u2013 Mom's Classes")
-    default_dur = config.get("default_class_duration_minutes", 45)
-    movie_dur = config.get("movie_duration_minutes", 135)
-    early_start = config.get("early_start_minutes", 0)
-    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-
-    lines = [
+def _ics_header(cal_name):
+    """Return the standard VCALENDAR header lines."""
+    return [
         "BEGIN:VCALENDAR", "VERSION:2.0",
         "PRODID:-//Tice Creek Calendar Sync//EN",
         "X-WR-CALNAME:{}".format(cal_name),
@@ -570,9 +642,18 @@ def generate_ics(classes, config, movies=None):
         "END:VTIMEZONE",
     ]
 
+
+def generate_fitness_ics(classes, config):
+    """Generate ICS for fitness classes only."""
+    cal_name = config.get("calendar_name",
+                          "Tice Creek \u2013 Beth's Classes")
+    default_dur = config.get("default_class_duration_minutes", 45)
+    early_start = config.get("early_start_minutes", 0)
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    lines = _ics_header(cal_name)
     count = 0
 
-    # --- Fitness classes ---
     for cls in classes:
         start_iso = cls.get("start_iso", "")
         if not start_iso:
@@ -626,7 +707,6 @@ def generate_ics(classes, config, movies=None):
         newline = "\\n"
         description = newline.join(desc_parts)
 
-        # Shift start earlier so Beth leaves with buffer time
         cal_start = start - timedelta(minutes=early_start)
 
         uid_str = "{}-{}-{}".format(name, cls.get("date", ""), start_iso)
@@ -648,7 +728,23 @@ def generate_ics(classes, config, movies=None):
         ])
         count += 1
 
-    # --- Movie events ---
+    lines.append("END:VCALENDAR")
+    log.info("Generated {} fitness events".format(count))
+    return "\r\n".join(lines), count
+
+
+def generate_entertainment_ics(movies, concerts, config):
+    """Generate ICS for movies + concerts."""
+    cal_name = "Rossmoor \u2013 Movies & Events"
+    movie_dur = config.get("movie_duration_minutes", 135)
+    concert_dur = config.get("concert_duration_minutes", 120)
+    early_start = config.get("early_start_minutes", 0)
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    lines = _ics_header(cal_name)
+    count = 0
+
+    # --- Movies ---
     for mov in (movies or []):
         start_iso = mov.get("start_iso", "")
         if not start_iso:
@@ -661,7 +757,6 @@ def generate_ics(classes, config, movies=None):
         end = start + timedelta(minutes=movie_dur)
         title = mov["title"]
         movie_year = mov.get("movie_year", "")
-
         display_name = "{} ({})".format(title, movie_year)
 
         desc_parts = []
@@ -675,9 +770,7 @@ def generate_ics(classes, config, movies=None):
         newline = "\\n"
         description = newline.join(desc_parts)
 
-        # Apply early start for travel time
         cal_start = start - timedelta(minutes=early_start)
-
         uid_str = "movie-{}-{}-{}".format(title, mov.get("date", ""),
                                           start_iso)
         uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
@@ -698,10 +791,68 @@ def generate_ics(classes, config, movies=None):
         ])
         count += 1
 
+    # --- Concerts / Spotlight events ---
+    for evt in (concerts or []):
+        start_iso = evt.get("start_iso", "")
+        if not start_iso:
+            continue
+        try:
+            start = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        end = start + timedelta(minutes=concert_dur)
+        title = evt["title"]
+        event_type = evt.get("event_type", "Concert")
+        cost = evt.get("cost", "")
+        loc_code = evt.get("location_code", "EC")
+        location = ROSSMOOR_LOCATIONS.get(loc_code, ROSSMOOR_LOCATIONS["EC"])
+
+        if "Spotlight" in event_type:
+            emoji = "\U0001f3b5"  # music note
+            display_name = "Spotlight: {}".format(title)
+        else:
+            emoji = "\U0001f3b6"  # music notes
+            display_name = title
+
+        desc_parts = []
+        show_time = start.strftime("%I:%M %p").lstrip("0")
+        desc_parts.append("{} at {}".format(show_time, loc_code))
+        if cost:
+            desc_parts.append("Tickets: {}".format(cost))
+        else:
+            desc_parts.append("Free admission")
+        desc_parts.append(
+            "Tickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm")
+        desc_parts.append("Auto-synced from rossmoor.com recreation calendar")
+        newline = "\\n"
+        description = newline.join(desc_parts)
+
+        cal_start = start - timedelta(minutes=early_start)
+        uid_str = "concert-{}-{}-{}".format(title, evt.get("date", ""),
+                                            start_iso)
+        uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            "UID:{}@tice-creek-sync".format(uid),
+            "DTSTAMP:{}".format(now_utc),
+            "DTSTART;TZID=America/Los_Angeles:{}".format(
+                cal_start.strftime("%Y%m%dT%H%M%S")),
+            "DTEND;TZID=America/Los_Angeles:{}".format(
+                end.strftime("%Y%m%dT%H%M%S")),
+            "SUMMARY:{} {}".format(emoji, display_name),
+            "DESCRIPTION:{}".format(description),
+            "LOCATION:{}".format(location),
+            "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ])
+        count += 1
+
     lines.append("END:VCALENDAR")
-    log.info("Generated {} calendar events ({} classes, {} movies)".format(
-        count, count - len(movies or []), len(movies or [])))
-    return "\r\n".join(lines)
+    log.info("Generated {} entertainment events ({} movies, {} concerts)".format(
+        count, len(movies or []), len(concerts or [])))
+    return "\r\n".join(lines), count
 
 
 # =========================================================================
@@ -795,8 +946,10 @@ def main():
     config = load_config()
     output_dir = Path(config.get("output_dir", "docs"))
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / config.get(
-        "output_filename", "tice-creek-classes.ics")
+    fitness_file = output_dir / config.get(
+        "fitness_filename", "tice-creek-fitness.ics")
+    entertainment_file = output_dir / config.get(
+        "entertainment_filename", "tice-creek-entertainment.ics")
 
     log.info("=" * 60)
     log.info("Tice Creek Fitness Center \u2013 Calendar Sync")
@@ -879,7 +1032,8 @@ def main():
             "   Run: python3 scraper.py --discover --no-headless\n"
             "   Then share the debug/ folder so we can tune the parser."
         )
-        output_file.write_text(generate_ics([], config))
+        fitness_file.write_text(
+            generate_fitness_ics([], config)[0])
         sys.exit(1)
 
     # Show what we found
@@ -905,12 +1059,13 @@ def main():
                 cls.get("time", ""), cls.get("name", ""),
                 cls.get("instructor", "")))
 
-    # Scrape Rossmoor movie listings
+    # Scrape Rossmoor entertainment (movies + concerts)
     log.info("")
     log.info("=" * 60)
-    log.info("Rossmoor Peacock Hall \u2013 Movie Sync")
+    log.info("Rossmoor \u2013 Movies & Entertainment Sync")
     log.info("=" * 60)
-    movies = scrape_movies(config)
+    movies, concerts = scrape_entertainment(config)
+
     if movies:
         log.info("")
         log.info("Evening movies this month:")
@@ -921,12 +1076,30 @@ def main():
                     "%I:%M %p").lstrip("0"),
                 mov["title"], mov["movie_year"]))
 
-    # Generate ICS
-    ics = generate_ics(filtered, config, movies=movies)
-    output_file.write_text(ics)
+    if concerts:
+        log.info("")
+        log.info("Evening concerts/events this month:")
+        for evt in concerts:
+            log.info("  {} {} - {} {}".format(
+                evt.get("date", ""),
+                datetime.fromisoformat(evt["start_iso"]).strftime(
+                    "%I:%M %p").lstrip("0"),
+                evt["title"],
+                "({})".format(evt["cost"]) if evt.get("cost") else "(Free)"))
+
+    # Generate separate ICS files
+    fitness_ics, fitness_count = generate_fitness_ics(filtered, config)
+    fitness_file.write_text(fitness_ics)
+
+    entertainment_ics, ent_count = generate_entertainment_ics(
+        movies, concerts, config)
+    entertainment_file.write_text(entertainment_ics)
+
     log.info("")
-    log.info("\u2705 Calendar -> {} ({:,} bytes, {} classes + {} movies)".format(
-        output_file, output_file.stat().st_size, len(filtered), len(movies)))
+    log.info("\u2705 Fitness    -> {} ({:,} bytes, {} events)".format(
+        fitness_file, fitness_file.stat().st_size, fitness_count))
+    log.info("\u2705 Entertainment -> {} ({:,} bytes, {} events)".format(
+        entertainment_file, entertainment_file.stat().st_size, ent_count))
 
 
 if __name__ == "__main__":
