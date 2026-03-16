@@ -193,12 +193,26 @@ def scrape_page(page, url, label):
 # =========================================================================
 
 def filter_classes(classes, config):
-    include = [c.lower().strip() for c in config.get("include_classes", []) if c]
+    raw_include = config.get("include_classes", [])
     exclude = [c.lower().strip() for c in config.get("exclude_classes", []) if c]
     earliest = config.get("earliest_hour")
     latest = config.get("latest_hour")
 
-    if not include and not exclude and earliest is None and latest is None:
+    # Normalise include rules: each becomes {name: str, instructor: str|None}
+    include_rules = []
+    for entry in raw_include:
+        if isinstance(entry, dict):
+            include_rules.append({
+                "name": entry.get("name", "").lower().strip(),
+                "instructor": entry.get("instructor", "").lower().strip() or None,
+            })
+        elif isinstance(entry, str) and entry.strip():
+            include_rules.append({
+                "name": entry.lower().strip(),
+                "instructor": None,
+            })
+
+    if not include_rules and not exclude and earliest is None and latest is None:
         return classes
 
     filtered = []
@@ -206,9 +220,19 @@ def filter_classes(classes, config):
         nm = cls.get("name", "").lower()
         raw = cls.get("raw_name", "").lower()
         combined = nm + " " + raw
+        instr = cls.get("instructor", "").lower()
 
-        if include and not any(p in combined for p in include):
-            continue
+        # Check include rules
+        if include_rules:
+            matched = False
+            for rule in include_rules:
+                if rule["name"] in combined:
+                    if rule["instructor"] is None or rule["instructor"] in instr:
+                        matched = True
+                        break
+            if not matched:
+                continue
+
         if exclude and any(p in combined for p in exclude):
             continue
 

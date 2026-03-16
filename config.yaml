@@ -1,31 +1,29 @@
 # ============================================================
 # Tice Creek Calendar Sync – Beth's Preferences
 # ============================================================
-# Sync: water exercises, aquacise, Zumba, UJAM, yoga, and select pickleball
-# Only sync: classes at 10am or later
+# Sync: Zumba, UJAM, Aquacise (Bob only), Posture Balance
+#        Core & Strength, Mat Yoga
+# Only sync: classes at 11am or later
 # ============================================================
 
 calendar_name: "Tice Creek – Beth's Classes"
 
 # Class types to include (case-insensitive, partial match)
+# Use a string for any instructor, or {name: ..., instructor: ...} to filter
 include_classes:
-  - "aqua"
-  - "water"
   - "zumba"
   - "ujam"
-  - "pickleball_club_novice"
-  - "pickleball_club_open_play"
-  - "open_pickleball"
-  - "aquacise"
+  - name: "aquacise"
+    instructor: "bob"
+  - "posture_balance_core"
   - "mat_yoga"
-  - "restorative_yoga"
 
 # Classes to exclude
 exclude_classes:
   - "cancelled"
 
-# Only show classes at 10am or later
-earliest_hour: 10
+# Only show classes at 11am or later
+earliest_hour: 11
 
 # Start events 15 min early so Beth has travel time
 # (real class time still shown in the event description)
@@ -37,6 +35,9 @@ custom_titles:
   - match_name: "zumba"
     match_instructor: "sabrina"
     title: "Zumba w/ Sabrina"
+  - match_name: "aquacise"
+    match_instructor: "bob"
+    title: "Aquacise w/ Bob"
 
 # Default class duration if end time isn't scraped (minutes)
 default_class_duration_minutes: 45
