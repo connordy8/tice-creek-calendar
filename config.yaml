@@ -47,8 +47,8 @@ default_class_duration_minutes: 45
 include_movies: true
 include_concerts: true
 
-# Only include showings/concerts at or after this hour (18 = 6 PM)
-movie_earliest_hour: 18
+# Only include showings/concerts at or after this hour (16 = 4 PM)
+movie_earliest_hour: 16
 
 # Default movie duration in minutes (most are ~2 hours)
 movie_duration_minutes: 135
