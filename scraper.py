@@ -835,16 +835,43 @@ def generate_fitness_ics(classes, config):
     return "\r\n".join(lines), count
 
 
-def generate_entertainment_ics(movies, concerts, config):
-    """Generate ICS for movies + concerts."""
+def generate_entertainment_ics(movies, concerts, config,
+                               fitness_classes=None):
+    """Generate ICS for movies + concerts.
+
+    If fitness_classes is provided, skip entertainment events that
+    overlap with any fitness class.
+    """
     cal_name = "Rossmoor \u2013 Movies & Events"
     movie_dur = config.get("movie_duration_minutes", 135)
     concert_dur = config.get("concert_duration_minutes", 120)
+    default_class_dur = config.get("default_class_duration_minutes", 45)
     early_start = config.get("early_start_minutes", 0)
     now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
+    # Build fitness time ranges for conflict detection
+    fitness_ranges = []
+    for cls in (fitness_classes or []):
+        try:
+            fs = datetime.fromisoformat(cls["start_iso"])
+            fd = cls.get("duration_minutes", default_class_dur)
+            if fd <= 0:
+                fd = default_class_dur
+            fe = fs + timedelta(minutes=fd)
+            fitness_ranges.append((fs, fe))
+        except (ValueError, KeyError):
+            pass
+
+    def conflicts_with_fitness(evt_start, evt_end):
+        """Return True if the entertainment event overlaps any fitness class."""
+        for fs, fe in fitness_ranges:
+            if evt_start < fe and evt_end > fs:
+                return True
+        return False
+
     lines = _ics_header(cal_name)
     count = 0
+    skipped = 0
 
     # --- Movies ---
     for mov in (movies or []):
@@ -857,6 +884,10 @@ def generate_entertainment_ics(movies, concerts, config):
             continue
 
         end = start + timedelta(minutes=movie_dur)
+        if conflicts_with_fitness(start, end):
+            skipped += 1
+            continue
+
         title = mov["title"]
         movie_year = mov.get("movie_year", "")
         display_name = "{} ({})".format(title, movie_year)
@@ -904,6 +935,10 @@ def generate_entertainment_ics(movies, concerts, config):
             continue
 
         end = start + timedelta(minutes=concert_dur)
+        if conflicts_with_fitness(start, end):
+            skipped += 1
+            continue
+
         title = evt["title"]
         event_type = evt.get("event_type", "Concert")
         cost = evt.get("cost", "")
@@ -952,9 +987,248 @@ def generate_entertainment_ics(movies, concerts, config):
         count += 1
 
     lines.append("END:VCALENDAR")
+    if skipped:
+        log.info("Skipped {} entertainment events due to fitness conflicts".format(
+            skipped))
     log.info("Generated {} entertainment events ({} movies, {} concerts)".format(
         count, len(movies or []), len(concerts or [])))
     return "\r\n".join(lines), count
+
+
+def generate_combined_ics(classes, movies, concerts, config):
+    """Generate a single ICS with fitness + entertainment events."""
+    cal_name = "Beth's Calendar"
+    default_dur = config.get("default_class_duration_minutes", 45)
+    movie_dur = config.get("movie_duration_minutes", 135)
+    concert_dur = config.get("concert_duration_minutes", 120)
+    early_start = config.get("early_start_minutes", 0)
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    lines = _ics_header(cal_name)
+    fitness_count = 0
+    ent_count = 0
+    skipped = 0
+
+    # Build fitness time ranges for conflict detection
+    fitness_ranges = []
+    for cls in (classes or []):
+        try:
+            fs = datetime.fromisoformat(cls["start_iso"])
+            fd = cls.get("duration_minutes", default_dur)
+            if fd <= 0:
+                fd = default_dur
+            fe = fs + timedelta(minutes=fd)
+            fitness_ranges.append((fs, fe))
+        except (ValueError, KeyError):
+            pass
+
+    def conflicts_with_fitness(evt_start, evt_end):
+        for fs, fe in fitness_ranges:
+            if evt_start < fe and evt_end > fs:
+                return True
+        return False
+
+    # --- Fitness classes ---
+    for cls in (classes or []):
+        start_iso = cls.get("start_iso", "")
+        if not start_iso:
+            continue
+        try:
+            start = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        dur = cls.get("duration_minutes", default_dur)
+        if dur <= 0:
+            dur = default_dur
+        end = start + timedelta(minutes=dur)
+
+        name = cls["name"]
+        instructor = cls.get("instructor", "")
+        source = cls.get("source", "")
+
+        display_name = name
+        for rule in config.get("custom_titles", []):
+            match_name = rule.get("match_name", "").lower()
+            match_instr = rule.get("match_instructor", "").lower()
+            if match_name and match_name in name.lower():
+                if match_instr and match_instr in instructor.lower():
+                    display_name = rule["title"]
+                    break
+                elif not match_instr:
+                    display_name = rule["title"]
+                    break
+
+        is_water = any(
+            w in name.lower() for w in ["aqua", "water", "swim", "pool"])
+        emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
+
+        desc_parts = []
+        if early_start > 0:
+            real_time = cls.get("time", "")
+            end_time = cls.get("end_time", "")
+            if real_time and end_time:
+                desc_parts.append("Class time: {} - {}".format(
+                    real_time, end_time))
+            elif real_time:
+                desc_parts.append("Class time: {}".format(real_time))
+        if instructor:
+            desc_parts.append("Instructor: {}".format(instructor))
+        if source:
+            desc_parts.append("Schedule: {}".format(
+                source.replace("_", " ").title()))
+        email_notes = cls.get("email_notes", "")
+        if email_notes:
+            desc_parts.append("Note: {}".format(email_notes))
+        if cls.get("is_manual"):
+            desc_parts.append("Added via email to bethcalendarupdate@gmail.com")
+        else:
+            desc_parts.append("Auto-synced from ticefitnesscenter.com")
+        newline = "\\n"
+        description = newline.join(desc_parts)
+
+        cal_start = start - timedelta(minutes=early_start)
+        uid_str = "{}-{}-{}".format(name, cls.get("date", ""), start_iso)
+        uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            "UID:{}@tice-creek-sync".format(uid),
+            "DTSTAMP:{}".format(now_utc),
+            "DTSTART;TZID=America/Los_Angeles:{}".format(
+                cal_start.strftime("%Y%m%dT%H%M%S")),
+            "DTEND;TZID=America/Los_Angeles:{}".format(
+                end.strftime("%Y%m%dT%H%M%S")),
+            "SUMMARY:{} {}".format(emoji, display_name),
+            "DESCRIPTION:{}".format(description),
+            "LOCATION:{}".format(cls.get("location") or LOCATION),
+            "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ])
+        fitness_count += 1
+
+    # --- Movies ---
+    for mov in (movies or []):
+        start_iso = mov.get("start_iso", "")
+        if not start_iso:
+            continue
+        try:
+            start = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        end = start + timedelta(minutes=movie_dur)
+        if conflicts_with_fitness(start, end):
+            skipped += 1
+            continue
+
+        title = mov["title"]
+        movie_year = mov.get("movie_year", "")
+        display_name = "{} ({})".format(title, movie_year)
+
+        desc_parts = []
+        movie_desc = mov.get("description", "")
+        if movie_desc:
+            desc_parts.append(movie_desc)
+        show_time = start.strftime("%I:%M %p").lstrip("0")
+        desc_parts.append("Showtime: {} at Peacock Hall".format(show_time))
+        desc_parts.append("Free admission")
+        desc_parts.append("Auto-synced from rossmoor.com recreation calendar")
+        newline = "\\n"
+        description = newline.join(desc_parts)
+
+        cal_start = start - timedelta(minutes=early_start)
+        uid_str = "movie-{}-{}-{}".format(title, mov.get("date", ""),
+                                          start_iso)
+        uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            "UID:{}@tice-creek-sync".format(uid),
+            "DTSTAMP:{}".format(now_utc),
+            "DTSTART;TZID=America/Los_Angeles:{}".format(
+                cal_start.strftime("%Y%m%dT%H%M%S")),
+            "DTEND;TZID=America/Los_Angeles:{}".format(
+                end.strftime("%Y%m%dT%H%M%S")),
+            "SUMMARY:\U0001f3ac {}".format(display_name),
+            "DESCRIPTION:{}".format(description),
+            "LOCATION:{}".format(MOVIE_LOCATION),
+            "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ])
+        ent_count += 1
+
+    # --- Concerts / Spotlight events ---
+    for evt in (concerts or []):
+        start_iso = evt.get("start_iso", "")
+        if not start_iso:
+            continue
+        try:
+            start = datetime.fromisoformat(start_iso)
+        except ValueError:
+            continue
+
+        end = start + timedelta(minutes=concert_dur)
+        if conflicts_with_fitness(start, end):
+            skipped += 1
+            continue
+
+        title = evt["title"]
+        event_type = evt.get("event_type", "Concert")
+        cost = evt.get("cost", "")
+        loc_code = evt.get("location_code", "EC")
+        location = ROSSMOOR_LOCATIONS.get(
+            loc_code, ROSSMOOR_LOCATIONS["EC"])
+
+        if "Spotlight" in event_type:
+            emoji = "\U0001f3b5"
+            display_name = "Spotlight: {}".format(title)
+        else:
+            emoji = "\U0001f3b6"
+            display_name = "Concert: {}".format(title)
+
+        desc_parts = []
+        show_time = start.strftime("%I:%M %p").lstrip("0")
+        desc_parts.append("{} at {}".format(show_time, loc_code))
+        if cost:
+            desc_parts.append("Tickets: {}".format(cost))
+        else:
+            desc_parts.append("Free admission")
+        desc_parts.append(
+            "Tickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm")
+        desc_parts.append("Auto-synced from rossmoor.com recreation calendar")
+        newline = "\\n"
+        description = newline.join(desc_parts)
+
+        cal_start = start - timedelta(minutes=early_start)
+        uid_str = "concert-{}-{}-{}".format(title, evt.get("date", ""),
+                                            start_iso)
+        uid = hashlib.md5(uid_str.encode()).hexdigest()[:16]
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            "UID:{}@tice-creek-sync".format(uid),
+            "DTSTAMP:{}".format(now_utc),
+            "DTSTART;TZID=America/Los_Angeles:{}".format(
+                cal_start.strftime("%Y%m%dT%H%M%S")),
+            "DTEND;TZID=America/Los_Angeles:{}".format(
+                end.strftime("%Y%m%dT%H%M%S")),
+            "SUMMARY:{} {}".format(emoji, display_name),
+            "DESCRIPTION:{}".format(description),
+            "LOCATION:{}".format(location),
+            "STATUS:CONFIRMED", "TRANSP:TRANSPARENT",
+            "END:VEVENT",
+        ])
+        ent_count += 1
+
+    lines.append("END:VCALENDAR")
+    total = fitness_count + ent_count
+    if skipped:
+        log.info("Skipped {} entertainment events due to fitness conflicts".format(
+            skipped))
+    log.info("Generated {} total events ({} fitness, {} entertainment)".format(
+        total, fitness_count, ent_count))
+    return "\r\n".join(lines), total
 
 
 # =========================================================================
@@ -1187,10 +1461,8 @@ def main():
     config = load_config()
     output_dir = Path(config.get("output_dir", "docs"))
     output_dir.mkdir(parents=True, exist_ok=True)
-    fitness_file = output_dir / config.get(
-        "fitness_filename", "tice-creek-fitness.ics")
-    entertainment_file = output_dir / config.get(
-        "entertainment_filename", "tice-creek-entertainment.ics")
+    combined_file = output_dir / config.get(
+        "combined_filename", "beth-calendar.ics")
 
     log.info("=" * 60)
     log.info("Tice Creek Fitness Center \u2013 Calendar Sync")
@@ -1273,8 +1545,8 @@ def main():
             "   Run: python3 scraper.py --discover --no-headless\n"
             "   Then share the debug/ folder so we can tune the parser."
         )
-        fitness_file.write_text(
-            generate_fitness_ics([], config)[0])
+        combined_file.write_text(
+            generate_combined_ics([], None, None, config)[0])
         sys.exit(1)
 
     # Show what we found
@@ -1333,19 +1605,14 @@ def main():
     if manual_events:
         filtered = apply_manual_events(filtered, manual_events)
 
-    # Generate separate ICS files
-    fitness_ics, fitness_count = generate_fitness_ics(filtered, config)
-    fitness_file.write_text(fitness_ics)
-
-    entertainment_ics, ent_count = generate_entertainment_ics(
-        movies, concerts, config)
-    entertainment_file.write_text(entertainment_ics)
+    # Generate single combined ICS file
+    combined_ics, total_count = generate_combined_ics(
+        filtered, movies, concerts, config)
+    combined_file.write_text(combined_ics)
 
     log.info("")
-    log.info("\u2705 Fitness    -> {} ({:,} bytes, {} events)".format(
-        fitness_file, fitness_file.stat().st_size, fitness_count))
-    log.info("\u2705 Entertainment -> {} ({:,} bytes, {} events)".format(
-        entertainment_file, entertainment_file.stat().st_size, ent_count))
+    log.info("\u2705 Calendar -> {} ({:,} bytes, {} events)".format(
+        combined_file, combined_file.stat().st_size, total_count))
 
 
 if __name__ == "__main__":
