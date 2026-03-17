@@ -30,7 +30,8 @@ COLOR_CONCERT = "6"      # Tangerine (orange)
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 # Prefix for event IDs we manage — lets us find/clean up our events
-EVENT_ID_PREFIX = "bethsync"
+# Google Calendar IDs must use only lowercase a-v and digits 0-9
+EVENT_ID_PREFIX = "be0ca1"
 
 
 def get_calendar_service():
