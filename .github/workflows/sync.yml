@@ -14,6 +14,7 @@ on:
     paths:
       - "config.yaml"
       - "scraper.py"
+      - "gcal_sync.py"
       - "email_handler.py"
 
 # Grant write permission to push updated ICS file
@@ -48,6 +49,9 @@ jobs:
         run: python email_handler.py
 
       - name: Run scraper
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
         run: python scraper.py
 
       - name: Upload debug artifacts (on failure)

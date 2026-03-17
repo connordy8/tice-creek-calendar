@@ -1605,14 +1605,22 @@ def main():
     if manual_events:
         filtered = apply_manual_events(filtered, manual_events)
 
-    # Generate single combined ICS file
-    combined_ics, total_count = generate_combined_ics(
-        filtered, movies, concerts, config)
-    combined_file.write_text(combined_ics)
-
-    log.info("")
-    log.info("\u2705 Calendar -> {} ({:,} bytes, {} events)".format(
-        combined_file, combined_file.stat().st_size, total_count))
+    # Sync directly to Google Calendar (with colors!)
+    if os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY"):
+        from gcal_sync import sync_to_google_calendar
+        log.info("")
+        log.info("=" * 60)
+        log.info("Syncing to Google Calendar...")
+        log.info("=" * 60)
+        sync_to_google_calendar(filtered, movies, concerts, config)
+    else:
+        # Fallback: generate ICS file
+        combined_ics, total_count = generate_combined_ics(
+            filtered, movies, concerts, config)
+        combined_file.write_text(combined_ics)
+        log.info("")
+        log.info("\u2705 Calendar -> {} ({:,} bytes, {} events)".format(
+            combined_file, combined_file.stat().st_size, total_count))
 
 
 if __name__ == "__main__":
