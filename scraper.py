@@ -13,6 +13,7 @@ Usage:
 
 import json
 import hashlib
+import os
 import re
 import sys
 import logging
