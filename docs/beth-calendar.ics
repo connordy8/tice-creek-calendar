@@ -1,0 +1,388 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Tice Creek Calendar Sync//EN
+X-WR-CALNAME:Beth's Calendar
+X-WR-TIMEZONE:America/Los_Angeles
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VTIMEZONE
+TZID:America/Los_Angeles
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0800
+TZOFFSETTO:-0700
+TZNAME:PDT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0700
+TZOFFSETTO:-0800
+TZNAME:PST
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:7a9bae66b83a5d08@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260318T124500
+DTEND;TZID=America/Los_Angeles:20260318T135000
+SUMMARY:🏋️ UJAM and Stretch
+DESCRIPTION:Class time: 1:00 PM - 1:50 PM\nInstructor: Tracy Perrilliat\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:25e3585ab3220de0@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260318T134500
+DTEND;TZID=America/Los_Angeles:20260318T145000
+SUMMARY:🏋️ Mat Yoga
+DESCRIPTION:Class time: 2:00 PM - 2:50 PM\nInstructor: Nora Pallotta\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:6708630ed5e6787b@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260318T171500
+DTEND;TZID=America/Los_Angeles:20260318T182000
+SUMMARY:🏋️ Zumba w/ Sabrina
+DESCRIPTION:Class time: 5:30 PM - 6:20 PM\nInstructor: Sabrina Monahan\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:17bcb936e9703d60@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260319T164500
+DTEND;TZID=America/Los_Angeles:20260319T175000
+SUMMARY:🏋️ UJAM and Stretch
+DESCRIPTION:Class time: 5:00 PM - 5:50 PM\nInstructor: Tracy Perrilliat\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:ad79f857aba55933@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260320T124500
+DTEND;TZID=America/Los_Angeles:20260320T135000
+SUMMARY:🏋️ Zumba w/ Sabrina
+DESCRIPTION:Class time: 1:00 PM - 1:50 PM\nInstructor: Sabrina Monahan\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:7918207b07f80f01@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260321T111500
+DTEND;TZID=America/Los_Angeles:20260321T122000
+SUMMARY:🏋️ Posture, Balance, Core and Strength
+DESCRIPTION:Class time: 11:30 AM - 12:20 PM\nInstructor: Terry Hummel\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:671378a3382fdd61@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260322T121500
+DTEND;TZID=America/Los_Angeles:20260322T132000
+SUMMARY:🏋️ Mat Yoga
+DESCRIPTION:Class time: 12:30 PM - 1:20 PM\nInstructor: Nora Pallotta\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:505a78f9b321515e@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260322T151500
+DTEND;TZID=America/Los_Angeles:20260322T162000
+SUMMARY:🏋️ UJAM and Stretch
+DESCRIPTION:Class time: 3:30 PM - 4:20 PM\nInstructor: Tracy Perrilliat\nSchedule: Group Fitness\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:76e2504fa2979c48@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260318T111500
+DTEND;TZID=America/Los_Angeles:20260318T122000
+SUMMARY:🏊 Aquacise w/ Bob
+DESCRIPTION:Class time: 11:30 AM - 12:20 PM\nInstructor: BOB HUFF\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:9ed84b256c7d65cd@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260323T111500
+DTEND;TZID=America/Los_Angeles:20260323T122000
+SUMMARY:🏊 Aquacise w/ Bob
+DESCRIPTION:Class time: 11:30 AM - 12:20 PM\nInstructor: BOB HUFF\nSchedule: Aquatics\nAuto-synced from ticefitnesscenter.com
+LOCATION:Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:2a8f61990df33177@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260301T184500
+DTEND;TZID=America/Los_Angeles:20260301T211500
+SUMMARY:🎬 Jerry & Marge Go Large (2022)
+DESCRIPTION:Jerry & Marge Go Large is a 2022 American comedy-drama film directed by David Frankel and written by Brad Copeland. Based on Jason Fagone's 2018 HuffPost article of the same name, the film, which is based on a true story, stars Bryan Cranston and Annette Bening.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:d867b8c9839cdeab@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260305T184500
+DTEND;TZID=America/Los_Angeles:20260305T211500
+SUMMARY:🎬 Marty Supreme (2025)
+DESCRIPTION:Marty Supreme is a 2025 American sports comedy-drama film directed by Josh Safdie, who co-wrote it with Ronald Bronstein. Set in the 1950s, it stars Timothée Chalamet as table tennis player Marty Mauser and follows his quest to become world champion. Gwyneth Paltrow, Odessa A'zion, Kevin O'Leary, Tyler Okonma, Abel Ferrara, and Fran Drescher appear in supporting roles.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:853f3d130cb79482@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260306T184500
+DTEND;TZID=America/Los_Angeles:20260306T211500
+SUMMARY:🎬 Marty Supreme (2025)
+DESCRIPTION:Marty Supreme is a 2025 American sports comedy-drama film directed by Josh Safdie, who co-wrote it with Ronald Bronstein. Set in the 1950s, it stars Timothée Chalamet as table tennis player Marty Mauser and follows his quest to become world champion. Gwyneth Paltrow, Odessa A'zion, Kevin O'Leary, Tyler Okonma, Abel Ferrara, and Fran Drescher appear in supporting roles.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:fd72c98b2e063995@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260307T184500
+DTEND;TZID=America/Los_Angeles:20260307T211500
+SUMMARY:🎬 Captain Blood (1935)
+DESCRIPTION:Captain Blood is a 1935 American swashbuckler film directed by Michael Curtiz for First National Pictures and Warner Bros. Pictures, and starring Errol Flynn, Olivia de Havilland, Basil Rathbone, and Ross Alexander. With a screenplay by Casey Robinson, the film is based on the 1922 novel by Rafael Sabatini and concerns an imprisoned doctor and his fellow prisoners who escape their cruel island captivity to become West Indies pirates.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:1b00915847a9dbaa@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260308T184500
+DTEND;TZID=America/Los_Angeles:20260308T211500
+SUMMARY:🎬 Pitch Perfect (2012)
+DESCRIPTION:Pitch Perfect is a 2012 American comedy film directed by Jason Moore and written by Kay Cannon. It features an ensemble cast, including Anna Kendrick, Skylar Astin, Rebel Wilson, Adam DeVine, Anna Camp, Brittany Snow, Hana Mae Lee, Alexis Knapp, Ester Dean, Kelley Jakle, Shelley Regner, Wanetah Walmsley, Ben Platt, Utkarsh Ambudkar, John Michael Higgins, and Elizabeth Banks. The film's plot follows an all-female a cappella group that competes against an all-male group from their own universit...\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:5a20c6b6bb1a8490@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260312T184500
+DTEND;TZID=America/Los_Angeles:20260312T211500
+SUMMARY:🎬 Song Sung Blue (2025)
+DESCRIPTION:Song Sung Blue is a 2025 American biographical musical drama film written, produced, and directed by Craig Brewer, based on the 2008 documentary film of the same name by Greg Kohs. The film stars Hugh Jackman and Kate Hudson as Mike and Claire Sardina, who performed as the Neil Diamond tribute band Lightning & Thunder. The film's cast also includes Michael Imperioli, Ella Anderson, King Princess, and Mustafa Shakir.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:28426ebc7e5c4609@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260313T184500
+DTEND;TZID=America/Los_Angeles:20260313T211500
+SUMMARY:🎬 Song Sung Blue (2025)
+DESCRIPTION:Song Sung Blue is a 2025 American biographical musical drama film written, produced, and directed by Craig Brewer, based on the 2008 documentary film of the same name by Greg Kohs. The film stars Hugh Jackman and Kate Hudson as Mike and Claire Sardina, who performed as the Neil Diamond tribute band Lightning & Thunder. The film's cast also includes Michael Imperioli, Ella Anderson, King Princess, and Mustafa Shakir.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:388b00df9408bb9e@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260313T210000
+DTEND;TZID=America/Los_Angeles:20260313T233000
+SUMMARY:🎬 Song Sung Blue (2025)
+DESCRIPTION:Song Sung Blue is a 2025 American biographical musical drama film written, produced, and directed by Craig Brewer, based on the 2008 documentary film of the same name by Greg Kohs. The film stars Hugh Jackman and Kate Hudson as Mike and Claire Sardina, who performed as the Neil Diamond tribute band Lightning & Thunder. The film's cast also includes Michael Imperioli, Ella Anderson, King Princess, and Mustafa Shakir.\nShowtime: 9:15 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:236e645fd26aa551@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260314T184500
+DTEND;TZID=America/Los_Angeles:20260314T211500
+SUMMARY:🎬 Miracle: The Boys of ‘80 (2026)
+DESCRIPTION:Showtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:9fa010927ca29ec5@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260315T184500
+DTEND;TZID=America/Los_Angeles:20260315T211500
+SUMMARY:🎬 Danny Collins (2015)
+DESCRIPTION:Danny Collins is a 2015 American comedy-drama film written and directed by Dan Fogelman in his feature directorial debut. Inspired by the true story of folk singer Steve Tilston, the film stars Al Pacino, Annette Bening, Jennifer Garner, Bobby Cannavale and Christopher Plummer. The film was released in theaters on March 20, 2015.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:461a02dab0c2080c@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260319T184500
+DTEND;TZID=America/Los_Angeles:20260319T211500
+SUMMARY:🎬 Hamnet (2025)
+DESCRIPTION:Hamnet is a 2025 historical drama film directed by Chloé Zhao, who co-wrote the screenplay with Maggie O'Farrell, based on the 2020 novel by O'Farrell. The film dramatises the family life of William Shakespeare and his wife Anne Hathaway as they cope with the death of their 11-year-old son Hamnet. It stars Jessie Buckley and Paul Mescal as Agnes and William, alongside Emily Watson, Joe Alwyn, and Noah Jupe in supporting roles.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:c24025e45c0918e7@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260320T184500
+DTEND;TZID=America/Los_Angeles:20260320T211500
+SUMMARY:🎬 Hamnet (2025)
+DESCRIPTION:Hamnet is a 2025 historical drama film directed by Chloé Zhao, who co-wrote the screenplay with Maggie O'Farrell, based on the 2020 novel by O'Farrell. The film dramatises the family life of William Shakespeare and his wife Anne Hathaway as they cope with the death of their 11-year-old son Hamnet. It stars Jessie Buckley and Paul Mescal as Agnes and William, alongside Emily Watson, Joe Alwyn, and Noah Jupe in supporting roles.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:8c5e9fda5055dc55@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260320T204500
+DTEND;TZID=America/Los_Angeles:20260320T231500
+SUMMARY:🎬 Hamnet (2025)
+DESCRIPTION:Hamnet is a 2025 historical drama film directed by Chloé Zhao, who co-wrote the screenplay with Maggie O'Farrell, based on the 2020 novel by O'Farrell. The film dramatises the family life of William Shakespeare and his wife Anne Hathaway as they cope with the death of their 11-year-old son Hamnet. It stars Jessie Buckley and Paul Mescal as Agnes and William, alongside Emily Watson, Joe Alwyn, and Noah Jupe in supporting roles.\nShowtime: 9:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:e18854676988376e@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260321T184500
+DTEND;TZID=America/Los_Angeles:20260321T211500
+SUMMARY:🎬 Madeleine (1950)
+DESCRIPTION:Madeleine is a 1950 British period film noir directed by David Lean and starring Ann Todd, Norman Wooland, Ivan Desny and Leslie Banks. It is based on the true story of Madeleine Smith (Todd), a young Glasgow woman from a wealthy family who was tried in 1857 for the murder of her lover, Émile L'Angelier (Desny). The trial was much publicised in the newspapers of the day and labelled "the trial of the century".\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:7625546673aba31d@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260322T184500
+DTEND;TZID=America/Los_Angeles:20260322T211500
+SUMMARY:🎬 Best In Show (2000)
+DESCRIPTION:Best in Show is a 2000 American mockumentary comedy film co-written by Christopher Guest and Eugene Levy and directed by Guest. The film follows five entrants in a prestigious dog show as they travel to and compete at the show, and stars Guest and Levy alongside Jennifer Coolidge, John Michael Higgins, Michael Hitchcock, Jane Lynch, Michael McKean, Catherine O'Hara, and Parker Posey. Much of the dialogue was improvised.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:5a1c77c7b1ca94a2@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260323T184500
+DTEND;TZID=America/Los_Angeles:20260323T211500
+SUMMARY:🎬 FM (1978)
+DESCRIPTION:FM is a 1978 American comedy drama film about internal conflicts at an FM radio station directed by John A. Alonzo and starring Michael Brandon, Eileen Brennan, Alex Karras, Cleavon Little, Martin Mull and Cassie Yates with special appearances by Linda Ronstadt and Jimmy Buffett in his feature film debut. The screenplay was written by Ezra Sacks.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:6da16a855a89b67f@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260326T184500
+DTEND;TZID=America/Los_Angeles:20260326T211500
+SUMMARY:🎬 The Secret Agent (2025)
+DESCRIPTION:The Secret Agent is a 2025 historical political thriller film written and directed by Kleber Mendonça Filho. It follows Armando, a former professor caught in the political turmoil in the midst of the Brazilian military dictatorship, attempting to flee persecution and resist an authoritarian regime. The supporting cast includes Carlos Francisco, Tânia Maria, Robério Diógenes, Gabriel Leone, Maria Fernanda Cândido, Alice Carvalho, and Udo Kier in his final film role.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:01d31134ba81fee3@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260327T184500
+DTEND;TZID=America/Los_Angeles:20260327T211500
+SUMMARY:🎬 The Secret Agent (2025)
+DESCRIPTION:The Secret Agent is a 2025 historical political thriller film written and directed by Kleber Mendonça Filho. It follows Armando, a former professor caught in the political turmoil in the midst of the Brazilian military dictatorship, attempting to flee persecution and resist an authoritarian regime. The supporting cast includes Carlos Francisco, Tânia Maria, Robério Diógenes, Gabriel Leone, Maria Fernanda Cândido, Alice Carvalho, and Udo Kier in his final film role.\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:96b879b186296aea@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260328T184500
+DTEND;TZID=America/Los_Angeles:20260328T211500
+SUMMARY:🎬 A Woman Under The Influence (1974)
+DESCRIPTION:Showtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:3b4e04b818727af0@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260329T184500
+DTEND;TZID=America/Los_Angeles:20260329T211500
+SUMMARY:🎬 There Goes The Neighborhood (1992)
+DESCRIPTION:There Goes the Neighborhood may refer to:\nShowtime: 7:00 PM at Peacock Hall\nFree admission\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:be58ec12aba1956f@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260307T184500
+DTEND;TZID=America/Los_Angeles:20260307T210000
+SUMMARY:🎶 Concert: James Snyder
+DESCRIPTION:7:00 PM at EC\nTickets: $22\nTickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Event Center, 1021 Stanley Dollar Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:d716a28f1b0417d6@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260308T184500
+DTEND;TZID=America/Los_Angeles:20260308T210000
+SUMMARY:🎶 Concert: Strange Daze–Doors Tribute
+DESCRIPTION:7:00 PM at EC\nTickets: $22\nTickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Event Center, 1021 Stanley Dollar Dr, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+BEGIN:VEVENT
+UID:32d4b7a96ca4ca75@tice-creek-sync
+DTSTAMP:20260317T233930Z
+DTSTART;TZID=America/Los_Angeles:20260331T184500
+DTEND;TZID=America/Los_Angeles:20260331T210000
+SUMMARY:🎶 Concert: Larry Vuckovich Band, Guaraldi Tribute
+DESCRIPTION:7:00 PM at FR\nTickets: $18\nTickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm\nAuto-synced from rossmoor.com recreation calendar
+LOCATION:Fireside Room, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595
+STATUS:CONFIRMED
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR
