@@ -320,9 +320,13 @@ def download_movie_pdf(url=ROSSMOOR_MOVIE_PDF_URL):
 def parse_recreation_pdf(pdf_path):
     """Extract movie AND concert/event listings from the Rossmoor PDF.
 
+    Uses grid-based extraction since the PDF is a calendar grid layout
+    where each day is a cell positioned by x/y coordinates.
+
     Returns (movies, concerts) where each is a list of dicts.
     """
     import pdfplumber
+    from collections import defaultdict
 
     movies = []
     concerts = []
@@ -345,113 +349,195 @@ def parse_recreation_pdf(pdf_path):
             log.info("  Parsing recreation calendar for {} {}".format(
                 month_name, year))
 
-            lines = text.split('\n')
-            current_day = None
+            # Extract words with positions to find day cells
+            words = page.extract_words(
+                keep_blank_chars=True, x_tolerance=2)
 
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
+            # Find day number positions
+            day_cells = []
+            for w in words:
+                t = w["text"].strip()
+                if t.isdigit() and 1 <= int(t) <= 31:
+                    day_cells.append({
+                        "day": int(t), "x": w["x0"], "y": w["top"]})
 
-                # Detect day numbers: standalone 1-31
-                day_match = re.match(r'^(\d{1,2})$', line)
-                if day_match:
-                    d = int(day_match.group(1))
-                    if 1 <= d <= 31:
-                        current_day = d
-                    i += 1
-                    continue
+            if not day_cells:
+                continue
 
-                # --- Movies: Movie: "Title" (Year) ---
-                movie_match = re.search(
-                    r'Movie:\s*[\u201c"\u2018\'](.*?)[\u201d"\u2019\']\s*'
-                    r'\((\d{4})\)', line)
-                if movie_match and current_day:
-                    title = movie_match.group(1)
-                    movie_year = movie_match.group(2)
+            # Group days by row (same y, tolerance of 10)
+            rows = defaultdict(list)
+            for dc in day_cells:
+                row_key = round(dc["y"] / 10) * 10
+                rows[row_key].append(dc)
 
-                    times_text = line
-                    if i + 1 < len(lines):
-                        next_line = lines[i + 1].strip()
-                        if re.search(r'\d.*[ap]\.m\.', next_line, re.IGNORECASE):
-                            times_text += " " + next_line
-                            i += 1
+            sorted_rows = sorted(rows.items())
+            if not sorted_rows:
+                continue
 
-                    showtimes = _parse_showtimes(
-                        times_text, year, month_num, current_day)
+            # Get column x positions from first full row
+            first_row = sorted(sorted_rows[0][1], key=lambda d: d["x"])
+            col_xs = [d["x"] for d in first_row]
 
-                    for dt in showtimes:
-                        date_str = "{}-{:02d}-{:02d}".format(
-                            year, month_num, current_day)
-                        movies.append({
-                            "title": title,
-                            "movie_year": movie_year,
-                            "date": date_str,
-                            "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
-                            "start_hour": dt.hour,
-                            "start_dt": dt,
-                            "is_movie": True,
-                        })
-                    i += 1
-                    continue
+            # Build column x-ranges
+            col_ranges = []
+            for ci, x in enumerate(col_xs):
+                x_start = x - 5
+                x_end = (col_xs[ci + 1] - 5
+                         if ci + 1 < len(col_xs) else page.width)
+                col_ranges.append((x_start, x_end))
 
-                # --- Concerts & Spotlight events ---
-                # Match: Concert: "Name" or The Spotlight: Name
-                concert_match = re.search(
-                    r'(Concert|The Spotlight):\s*[\u201c"\u2018\']?'
-                    r'(.*?)[\u201d"\u2019\']?\s*$', line)
-                if concert_match and current_day:
-                    event_type = concert_match.group(1).strip()
-                    event_name = concert_match.group(2).strip()
-                    # Clean up trailing quotes
-                    event_name = event_name.strip('\u201c\u201d"\'')
+            # Extract text for each day cell
+            for row_idx, (row_y, day_list) in enumerate(sorted_rows):
+                day_list.sort(key=lambda d: d["x"])
+                y_start = row_y - 5
+                y_end = (sorted_rows[row_idx + 1][0] - 5
+                         if row_idx + 1 < len(sorted_rows)
+                         else page.height)
 
-                    # Gather time + location + cost from next line(s)
-                    times_text = ""
-                    cost = ""
-                    location_code = ""
-                    for look_ahead in range(1, 4):
-                        if i + look_ahead >= len(lines):
-                            break
-                        next_line = lines[i + look_ahead].strip()
-                        if re.search(r'[ap]\.m\.', next_line, re.IGNORECASE):
-                            times_text += " " + next_line
-                            # Extract cost like ($22) or ($18)
-                            cost_match = re.search(
-                                r'\(\$(\d+)\)', next_line)
-                            if cost_match:
-                                cost = "${}".format(cost_match.group(1))
-                            # Extract location code
-                            for code in ["EC", "FR", "PH", "CR", "G"]:
-                                if code in next_line.split():
-                                    location_code = code
-                                    break
-                            i += 1
-                        else:
-                            break
+                for dc in day_list:
+                    col_idx = min(
+                        range(len(col_xs)),
+                        key=lambda i: abs(col_xs[i] - dc["x"]))
+                    x_start, x_end = col_ranges[col_idx]
 
-                    if not times_text:
-                        i += 1
+                    try:
+                        cell = page.within_bbox(
+                            (x_start, y_start, x_end, y_end))
+                        cell_text = cell.extract_text()
+                    except Exception:
+                        continue
+                    if not cell_text:
                         continue
 
-                    showtimes = _parse_showtimes(
-                        times_text, year, month_num, current_day)
+                    current_day = dc["day"]
+                    cell_lines = cell_text.split('\n')
 
-                    for dt in showtimes:
-                        date_str = "{}-{:02d}-{:02d}".format(
-                            year, month_num, current_day)
-                        concerts.append({
-                            "title": event_name,
-                            "event_type": event_type,
-                            "date": date_str,
-                            "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
-                            "start_hour": dt.hour,
-                            "start_dt": dt,
-                            "cost": cost,
-                            "location_code": location_code,
-                            "is_concert": True,
-                        })
+                    ci = 0
+                    while ci < len(cell_lines):
+                        cline = cell_lines[ci].strip()
 
-                i += 1
+                        # --- Movies ---
+                        movie_match = re.search(
+                            r'Movie:\s*[\u201c"\u2018\'](.*?)[\u201d"\u2019\']\s*'
+                            r'\((\d{4})\)', cline)
+                        if not movie_match:
+                            # Title may span two lines
+                            if cline.startswith("Movie:") and ci + 1 < len(cell_lines):
+                                combined = cline + " " + cell_lines[ci + 1].strip()
+                                movie_match = re.search(
+                                    r'Movie:\s*[\u201c"\u2018\'](.*?)[\u201d"\u2019\']\s*'
+                                    r'\((\d{4})\)', combined)
+                                if movie_match:
+                                    ci += 1
+                                    cline = combined
+
+                        if movie_match:
+                            title = movie_match.group(1)
+                            movie_year = movie_match.group(2)
+
+                            # Look for showtime on next line
+                            times_text = cline
+                            if ci + 1 < len(cell_lines):
+                                nl = cell_lines[ci + 1].strip()
+                                if re.search(
+                                        r'(\d|Noon)', nl, re.IGNORECASE):
+                                    times_text += " " + nl
+                                    ci += 1
+
+                            showtimes = _parse_showtimes(
+                                times_text, year, month_num, current_day)
+                            for dt in showtimes:
+                                date_str = "{}-{:02d}-{:02d}".format(
+                                    year, month_num, current_day)
+                                movies.append({
+                                    "title": title,
+                                    "movie_year": movie_year,
+                                    "date": date_str,
+                                    "start_iso": dt.strftime(
+                                        "%Y-%m-%dT%H:%M"),
+                                    "start_hour": dt.hour,
+                                    "start_dt": dt,
+                                    "is_movie": True,
+                                })
+                            ci += 1
+                            continue
+
+                        # --- Concerts & Spotlight events ---
+                        concert_match = re.search(
+                            r'(Concert|The Spotlight):\s*[\u201c"\u2018\']?'
+                            r'(.*?)[\u201d"\u2019\']?\s*$', cline)
+                        if concert_match:
+                            event_type = concert_match.group(1).strip()
+                            event_name = concert_match.group(2).strip()
+                            event_name = event_name.strip(
+                                '\u201c\u201d"\'')
+
+                            # Name may continue on next line(s)
+                            while (ci + 1 < len(cell_lines)
+                                   and not re.search(
+                                       r'(\d|Noon).*([ap]\.m\.|EC|FR|PH)',
+                                       cell_lines[ci + 1],
+                                       re.IGNORECASE)):
+                                ci += 1
+                                extra = cell_lines[ci].strip()
+                                if extra.startswith(("Movie:", "Concert:",
+                                                     "The Spotlight:")):
+                                    ci -= 1
+                                    break
+                                event_name += " " + extra
+
+                            event_name = event_name.strip(
+                                '\u201c\u201d"\'')
+
+                            # Gather time/location/cost
+                            times_text = ""
+                            cost = ""
+                            location_code = ""
+                            for la in range(1, 4):
+                                if ci + la >= len(cell_lines):
+                                    break
+                                nl = cell_lines[ci + la].strip()
+                                if re.search(
+                                        r'([ap]\.m\.|Noon)',
+                                        nl, re.IGNORECASE):
+                                    times_text += " " + nl
+                                    cost_m = re.search(
+                                        r'\(\$(\d+)\)', nl)
+                                    if cost_m:
+                                        cost = "${}".format(
+                                            cost_m.group(1))
+                                    for code in [
+                                            "EC", "FR", "PH", "CR", "G"]:
+                                        if code in nl.split():
+                                            location_code = code
+                                            break
+                                    ci += 1
+                                else:
+                                    break
+
+                            if not times_text:
+                                ci += 1
+                                continue
+
+                            showtimes = _parse_showtimes(
+                                times_text, year, month_num, current_day)
+                            for dt in showtimes:
+                                date_str = "{}-{:02d}-{:02d}".format(
+                                    year, month_num, current_day)
+                                concerts.append({
+                                    "title": event_name,
+                                    "event_type": event_type,
+                                    "date": date_str,
+                                    "start_iso": dt.strftime(
+                                        "%Y-%m-%dT%H:%M"),
+                                    "start_hour": dt.hour,
+                                    "start_dt": dt,
+                                    "cost": cost,
+                                    "location_code": location_code,
+                                    "is_concert": True,
+                                })
+
+                        ci += 1
 
     log.info("  Parsed {} movie showings, {} concerts/events from PDF".format(
         len(movies), len(concerts)))
@@ -466,8 +552,17 @@ def _parse_showtimes(text, year, month, day):
         '10 a.m., 1, 4, 7 p.m. PH'
         '10 a.m., 1, 4, 7, 9:15 p.m. PH'
         '4 p.m. PH'
+        'Noon, EC'
     """
     times = []
+
+    # Handle "Noon" explicitly
+    if re.search(r'\bNoon\b', text, re.IGNORECASE):
+        try:
+            times.append(datetime(year, month, day, 12, 0))
+        except ValueError:
+            pass
+        return times
 
     # Extract just the time portion (before PH/EC/FR etc.)
     time_section = re.search(
