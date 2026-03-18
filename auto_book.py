@@ -198,16 +198,27 @@ def find_reservable_classes(page):
         });
 
         candidates.forEach((btn, idx) => {
-            // Walk up the DOM to find enclosing block with class info
-            // Try progressively larger ancestors until we find a time
+            // Walk up the DOM to find enclosing block with class info.
+            // We need to go far enough to find BOTH the time AND the
+            // class name. Keep walking until we see a class-like word
+            // (letters followed by space) AND a time, or hit a table/body.
             let container = btn;
             let containerText = '';
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 15; i++) {
                 container = container.parentElement;
-                if (!container) break;
+                if (!container || container.tagName === 'BODY') break;
                 containerText = container.innerText || '';
-                // Stop when we find a time pattern (like "10:00 AM")
-                if (/\\d{1,2}:\\d{2}\\s*(AM|PM|am|pm)/i.test(containerText)) {
+                // Stop at table row level if it has enough info,
+                // or at any block that has both time AND letters
+                const hasTime = /\\d{1,2}:\\d{2}\\s*(AM|PM|am|pm)/i.test(containerText);
+                const hasClassName = /[A-Za-z]{3,}/.test(containerText);
+                const isRow = container.tagName === 'TR';
+                // Stop at TR if it has class info, otherwise keep going
+                if (isRow && hasTime && containerText.length > 100) {
+                    break;
+                }
+                // Stop at any large enough container
+                if (hasTime && hasClassName && containerText.length > 150) {
                     break;
                 }
             }
@@ -217,7 +228,7 @@ def find_reservable_classes(page):
 
             results.push({
                 idx: idx,
-                containerText: containerText.substring(0, 500),
+                containerText: containerText.substring(0, 800),
                 btnTag: btn.tagName,
                 btnText: (btn.value || btn.innerText || '').substring(0, 50),
             });
