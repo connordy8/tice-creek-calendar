@@ -67,15 +67,20 @@ def class_matches(class_name, instructor_name):
 
 
 def login(page):
-    """Log into Mindbody client portal."""
+    """Log into Mindbody from the schedule page.
+
+    We log in from the schedule page itself (click "Sign In" button)
+    so the session stays active on that page.
+    """
     email = os.environ.get("MINDBODY_EMAIL")
     password = os.environ.get("MINDBODY_PASSWORD")
     if not email or not password:
         raise RuntimeError(
             "MINDBODY_EMAIL and MINDBODY_PASSWORD env vars required")
 
-    log.info("Navigating to Mindbody login...")
-    page.goto(LOGIN_URL, timeout=30000)
+    # Go to the schedule page first
+    log.info("Navigating to class schedule...")
+    page.goto(SCHEDULE_URL, timeout=30000)
     page.wait_for_timeout(3000)
 
     # Check if already logged in
@@ -84,10 +89,35 @@ def login(page):
         log.info("Already logged in!")
         return True
 
+    # Click the "Sign In" link on the schedule page
+    sign_in_link = page.query_selector("a:has-text('Sign In')")
+    if not sign_in_link:
+        sign_in_link = page.query_selector(
+            "a[href*='su1'], a[href*='login'], a[href*='Login']")
+
+    if sign_in_link:
+        log.info("Clicking Sign In link on schedule page...")
+        sign_in_link.click()
+        page.wait_for_timeout(3000)
+    else:
+        # Navigate to login URL directly
+        log.info("No Sign In link found, going to login URL...")
+        page.goto(LOGIN_URL, timeout=30000)
+        page.wait_for_timeout(3000)
+
+    page.screenshot(path="debug/login_form.png")
+
     # Find and fill login form
-    user_field = page.query_selector("#su1UserName")
-    pass_field = page.query_selector("#su1Password")
-    login_btn = page.query_selector("#btnSu1Login")
+    user_field = (
+        page.query_selector("#su1UserName")
+        or page.query_selector("input[name*='UserName']")
+        or page.query_selector("input[type='email']")
+    )
+    pass_field = (
+        page.query_selector("#su1Password")
+        or page.query_selector("input[name*='Password']")
+        or page.query_selector("input[type='password']")
+    )
 
     if not user_field or not pass_field:
         page.screenshot(path="debug/login_page.png")
@@ -98,28 +128,31 @@ def login(page):
     pass_field.fill(password)
     page.wait_for_timeout(500)
 
+    login_btn = (
+        page.query_selector("#btnSu1Login")
+        or page.query_selector("input[type='submit']")
+        or page.query_selector("button[type='submit']")
+    )
     if login_btn:
         login_btn.click()
     else:
         pass_field.press("Enter")
 
-    # Wait for navigation after login
+    # Wait for login to complete
     page.wait_for_timeout(5000)
+    page.screenshot(path="debug/after_login.png")
 
-    # Check if login succeeded — look for "Welcome" or "Sign Out"
+    # Check if login succeeded
     body_text = page.inner_text("body")
     if "sign out" in body_text.lower() or "welcome" in body_text.lower():
         log.info("Login successful!")
-        page.screenshot(path="debug/login_success.png")
         return True
 
-    if "error" in body_text.lower() or "invalid" in body_text.lower():
+    if "invalid" in body_text.lower() or "incorrect" in body_text.lower():
         page.screenshot(path="debug/login_failed.png")
-        raise RuntimeError("Login failed — invalid credentials")
+        raise RuntimeError("Login failed — check credentials")
 
-    # Might still be logged in, just a different page
-    log.info("Login submitted. Current URL: {}".format(page.url[:80]))
-    page.screenshot(path="debug/login_page.png")
+    log.info("Login submitted. URL: {}".format(page.url[:80]))
     return True
 
 
@@ -260,27 +293,37 @@ def find_and_book_classes(page, target_date=None):
                 continue
 
         if not book_link:
-            # Method 2: Try to find any sign-up link by checking
-            # all links that mention the class name
-            for link in all_links:
+            # Method 2: Look for "Reserve Now" or sign-up links by
+            # checking all links/inputs on the page and matching by
+            # parent row content
+            reserve_btns = page.query_selector_all(
+                "input[value*='Reserve'], a:has-text('Reserve Now'), "
+                "input[value*='Sign Up'], a:has-text('Sign Up'), "
+                "a[href*='AddClass'], a[href*='SignUp']")
+            log.info("  Found {} reserve/sign-up buttons total".format(
+                len(reserve_btns)))
+
+            for btn in reserve_btns:
                 try:
-                    href = link.get_attribute("href") or ""
-                    if "AddClass" in href or "SignUp" in href:
-                        # Get parent text to match class
-                        parent_text = link.evaluate(
-                            "el => {"
-                            "  let p = el.parentElement;"
-                            "  for(let i=0; i<5 && p; i++) {"
-                            "    if(p.innerText.length > 20) "
-                            "      return p.innerText;"
-                            "    p = p.parentElement;"
-                            "  }"
-                            "  return '';"
-                            "}")
-                        if parent_text and matched_target["name"] in str(
-                                parent_text).lower():
-                            book_link = link
-                            log.info("  Found sign-up link via href")
+                    # Get the row/parent context of this button
+                    parent_text = btn.evaluate(
+                        "el => {"
+                        "  let p = el.parentElement;"
+                        "  for(let i=0; i<8 && p; i++) {"
+                        "    let t = p.innerText || '';"
+                        "    if(t.length > 30) return t;"
+                        "    p = p.parentElement;"
+                        "  }"
+                        "  return '';"
+                        "}")
+                    if parent_text and matched_target["name"] in str(
+                            parent_text).lower():
+                        # Verify time is also correct
+                        if time_str.lower().replace(" ", "") in str(
+                                parent_text).lower().replace(" ", ""):
+                            book_link = btn
+                            log.info("  Found reserve button via "
+                                     "parent context")
                             break
                 except Exception:
                     continue
