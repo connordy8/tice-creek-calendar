@@ -288,9 +288,10 @@ def find_and_book_classes(page, target_date=None):
         log.info("Matched: {} (button {})".format(
             class_desc, entry["idx"]))
 
-        # Check if already enrolled (button says "Cancel My" instead of "Reserve")
+        # Check if already enrolled
         if any(x in ctx for x in [
-                "cancel my", "you're in", "you are enrolled"]):
+                "registered!", "cancel my", "you're in",
+                "you are enrolled"]):
             log.info("  Already enrolled, skipping")
             already_booked.append(class_desc)
             continue
@@ -502,11 +503,15 @@ def get_enrolled_classes(page):
             if m:
                 lower = row_text.lower()
                 is_enrolled = (
-                    "cancel my" in lower
+                    "registered!" in lower
+                    or "cancel my" in lower
                     or "you're in" in lower
                     or "you are enrolled" in lower
                 )
-                is_waitlist = "on waitlist" in lower
+                is_waitlist = (
+                    "on waitlist" in lower
+                    or "waitlisted" in lower
+                )
                 status = "(ENROLLED)" if is_enrolled else (
                     "(WAITLISTED)" if is_waitlist else "(not enrolled)")
                 log.info("  {} {}: {}".format(
