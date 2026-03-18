@@ -353,6 +353,8 @@ def parse_recreation_pdf(pdf_path):
             # Extract words with positions to find day cells
             words = page.extract_words(
                 keep_blank_chars=True, x_tolerance=2)
+            log.info("  Page {}: {} words extracted".format(
+                page.page_number, len(words)))
 
             # Find day number positions
             day_cells = []
@@ -362,6 +364,7 @@ def parse_recreation_pdf(pdf_path):
                     day_cells.append({
                         "day": int(t), "x": w["x0"], "y": w["top"]})
 
+            log.info("  Found {} day cells".format(len(day_cells)))
             if not day_cells:
                 continue
 
@@ -401,9 +404,13 @@ def parse_recreation_pdf(pdf_path):
                         key=lambda i: abs(col_xs[i] - dc["x"]))
                     x_start, x_end = col_ranges[col_idx]
 
+                    # Clamp bbox to page dimensions
+                    bx0 = max(0, x_start)
+                    by0 = max(0, y_start)
+                    bx1 = min(page.width, x_end)
+                    by1 = min(page.height, y_end)
                     try:
-                        cell = page.within_bbox(
-                            (x_start, y_start, x_end, y_end))
+                        cell = page.crop((bx0, by0, bx1, by1))
                         cell_text = cell.extract_text()
                     except Exception:
                         continue
@@ -664,7 +671,9 @@ def scrape_entertainment(config):
     try:
         all_movies, all_concerts = parse_recreation_pdf(pdf_path)
     except Exception as e:
+        import traceback
         log.warning("Failed to parse recreation PDF: {}".format(e))
+        log.warning(traceback.format_exc())
         return [], []
     finally:
         import os
