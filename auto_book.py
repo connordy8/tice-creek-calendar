@@ -257,21 +257,33 @@ def find_and_book_classes(page, target_date=None):
         # Find the Reserve/Sign Up button for this class.
         book_link = None
 
-        # Debug: dump HTML structure of first reserve button (once)
-        if i < 3 and matched_target:
+        # Debug: find ALL elements containing "Reserve" text
+        if i < 2 and matched_target:
             try:
-                first_reserve = page.query_selector(
-                    "input[value*='Reserve']")
-                if first_reserve:
-                    html = first_reserve.evaluate(
-                        "el => {"
-                        "  let tr = el.closest('tr');"
-                        "  return tr ? tr.outerHTML.substring(0, 500) "
-                        "    : 'no tr found: ' + el.parentElement"
-                        "      .outerHTML.substring(0, 500);"
-                        "}")
-                    log.info("  DEBUG reserve btn HTML: {}".format(
-                        html[:300]))
+                # Search for any element with "Reserve" in its text
+                reserve_els = page.evaluate(
+                    """() => {
+                        const results = [];
+                        // Check inputs
+                        document.querySelectorAll('input').forEach(el => {
+                            if ((el.value || '').includes('Reserve')) {
+                                results.push('INPUT: ' + el.outerHTML.substring(0, 200));
+                            }
+                        });
+                        // Check links and buttons
+                        document.querySelectorAll('a, button').forEach(el => {
+                            if ((el.innerText || '').includes('Reserve')) {
+                                const tr = el.closest('tr');
+                                const rowText = tr ? tr.innerText.substring(0, 100) : 'no-tr';
+                                results.push(el.tagName + ': ' + el.outerHTML.substring(0, 150) + ' ROW: ' + rowText);
+                            }
+                        });
+                        return results.slice(0, 5);
+                    }""")
+                for r in reserve_els:
+                    log.info("  DEBUG reserve: {}".format(r[:250]))
+                if not reserve_els:
+                    log.info("  DEBUG: No Reserve elements found on page!")
             except Exception as e:
                 log.info("  DEBUG error: {}".format(e))
 
