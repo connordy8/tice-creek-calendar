@@ -288,9 +288,9 @@ def find_and_book_classes(page, target_date=None):
         log.info("Matched: {} (button {})".format(
             class_desc, entry["idx"]))
 
-        # Check if already enrolled
+        # Check if already enrolled (button says "Cancel My" instead of "Reserve")
         if any(x in ctx for x in [
-                "cancel my", "you're in", "enrolled"]):
+                "cancel my", "you're in", "you are enrolled"]):
             log.info("  Already enrolled, skipping")
             already_booked.append(class_desc)
             continue
@@ -480,17 +480,26 @@ def get_enrolled_classes(page):
         page.goto(url, timeout=30000)
         page.wait_for_timeout(2000)
 
-        # Find all class rows and check for enrollment indicators
+        # Find all class rows and check for enrollment indicators.
+        # When Beth IS enrolled, the button says "Cancel My Reservation"
+        # or "Cancel My Res" — NOT "Cancelled Today" (that means the
+        # studio cancelled the class).
         rows = page.evaluate("""() => {
             const results = [];
             const rows = document.querySelectorAll('.oddRow, .evenRow');
             rows.forEach(row => {
                 const text = (row.innerText || '').trim();
-                // Only include rows that have Cancel (enrolled) indicators
                 const lower = text.toLowerCase();
-                if (lower.includes('cancel') || lower.includes("you're in")
-                    || lower.includes('enrolled') || lower.includes('waitlist')
-                ) {
+                // "cancel my" = Beth is enrolled and can cancel
+                // "you're in" / "enrolled" = confirmed
+                // Exclude "cancelled today/class cancelled" (studio cancelled)
+                const isEnrolled = (
+                    lower.includes('cancel my')
+                    || lower.includes("you're in")
+                    || lower.includes('you are enrolled')
+                    || lower.includes('on waitlist')
+                );
+                if (isEnrolled) {
                     results.push(text.substring(0, 500));
                 }
             });
