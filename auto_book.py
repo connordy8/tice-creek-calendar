@@ -254,84 +254,88 @@ def find_and_book_classes(page, target_date=None):
             already_booked.append(class_desc)
             continue
 
-        # Find the sign-up link for this class
-        # Look for links near this text that say "Sign Up" or "Book"
-        # or links that contain the class session ID
+        # Find the Reserve/Sign Up button for this class.
+        # The schedule is a table where each class is a <tr> row.
+        # Reserve buttons are in the same row as the class name.
         book_link = None
 
-        # Method 1: Find links with sign-up text
+        # Method 1: Find all reserve/sign-up elements and match by row
         for link in all_links:
             try:
                 link_text = link.inner_text().strip().lower()
-                href = link.get_attribute("href") or ""
+                if not any(w in link_text for w in [
+                        "reserve", "sign up", "book", "enroll"]):
+                    continue
 
-                # Check if this is a sign-up/book link
-                if any(w in link_text for w in [
-                        "sign up", "book", "register", "enroll",
-                        "add to cart"]):
-                    # Check if it's near our class by looking at
-                    # surrounding text
-                    parent = link.evaluate(
-                        "el => el.closest('div, td, li, section')"
-                        " && el.closest('div, td, li, section')"
-                        ".innerText")
-                    if parent and matched_target["name"] in str(
-                            parent).lower():
+                # Check the <tr> ancestor for this link
+                row_text = link.evaluate(
+                    "el => {"
+                    "  let tr = el.closest('tr');"
+                    "  return tr ? tr.innerText : '';"
+                    "}")
+                if not row_text:
+                    continue
+                rt_lower = row_text.lower()
+                if matched_target["name"] in rt_lower:
+                    if matched_target.get("instructor"):
+                        if matched_target["instructor"] in rt_lower:
+                            book_link = link
+                            log.info("  Found booking link in row")
+                            break
+                    else:
                         book_link = link
-                        break
-                # Also check for links with class IDs in the href
-                elif "AddClass" in href or "enroll" in href.lower():
-                    parent = link.evaluate(
-                        "el => el.closest('div, td, li, section')"
-                        " && el.closest('div, td, li, section')"
-                        ".innerText")
-                    if parent and matched_target["name"] in str(
-                            parent).lower():
-                        book_link = link
+                        log.info("  Found booking link in row")
                         break
             except Exception:
                 continue
 
         if not book_link:
-            # Method 2: Look for "Reserve Now" or sign-up links by
-            # checking all links/inputs on the page and matching by
-            # parent row content
+            # Method 2: Find "Reserve Now" buttons and check their
+            # table row (tr) for the matching class name + time
             reserve_btns = page.query_selector_all(
                 "input[value*='Reserve'], a:has-text('Reserve Now'), "
-                "input[value*='Sign Up'], a:has-text('Sign Up'), "
-                "a[href*='AddClass'], a[href*='SignUp']")
+                "input[value*='Sign Up'], a:has-text('Sign Up')")
             log.info("  Found {} reserve/sign-up buttons total".format(
                 len(reserve_btns)))
 
             for btn in reserve_btns:
                 try:
-                    # Get the row/parent context of this button
-                    parent_text = btn.evaluate(
+                    # Get the closest <tr> ancestor's text
+                    row_text = btn.evaluate(
                         "el => {"
-                        "  let p = el.parentElement;"
-                        "  for(let i=0; i<8 && p; i++) {"
-                        "    let t = p.innerText || '';"
-                        "    if(t.length > 30) return t;"
-                        "    p = p.parentElement;"
-                        "  }"
-                        "  return '';"
+                        "  let tr = el.closest('tr');"
+                        "  return tr ? tr.innerText : '';"
                         "}")
-                    if parent_text and matched_target["name"] in str(
-                            parent_text).lower():
-                        # Verify time is also correct
-                        if time_str.lower().replace(" ", "") in str(
-                                parent_text).lower().replace(" ", ""):
+                    if not row_text:
+                        continue
+                    rt_lower = row_text.lower()
+                    if matched_target["name"] in rt_lower:
+                        # Also check instructor if needed
+                        if matched_target.get("instructor"):
+                            if matched_target["instructor"] in rt_lower:
+                                book_link = btn
+                                log.info("  Found reserve button in "
+                                         "matching row")
+                                break
+                        else:
                             book_link = btn
-                            log.info("  Found reserve button via "
-                                     "parent context")
+                            log.info("  Found reserve button in "
+                                     "matching row")
                             break
                 except Exception:
                     continue
 
         if not book_link:
-            log.info("  No booking link found — registration may "
-                     "not be open yet")
-            skipped.append(class_desc)
+            # Check if this is a CLUB class (no reservation needed)
+            if "club" in context:
+                log.info("  Club class — no reservation needed, "
+                         "Beth can just show up")
+                already_booked.append(
+                    "{} (open — no reservation)".format(class_desc))
+            else:
+                log.info("  No booking link found — registration may "
+                         "not be open yet or class is full")
+                skipped.append(class_desc)
             continue
 
         # Click the booking link
