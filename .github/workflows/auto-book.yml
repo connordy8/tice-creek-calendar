@@ -1,9 +1,18 @@
 name: Auto-Book Classes
 
 on:
-  # Run every morning at 5:30 AM Pacific (1:30 PM UTC)
-  # This gives it time to book before Beth's day starts
+  # Run every 2 hours to grab new spots ASAP
+  # Times in UTC — Pacific equivalents:
+  #   08:00 UTC = midnight PT  (new day, new slots!)
+  #   10:00 UTC = 2 AM PT
+  #   12:00 UTC = 4 AM PT
+  #   13:30 UTC = 5:30 AM PT  (before Beth's day starts)
+  #   16:00 UTC = 8 AM PT
+  #   18:00 UTC = 10 AM PT
+  #   20:00 UTC = noon PT
+  #   22:00 UTC = 2 PM PT
   schedule:
+    - cron: "0 8,10,12,16,18,20,22 * * *"
     - cron: "30 13 * * *"
 
   # Allow manual trigger
@@ -33,12 +42,14 @@ jobs:
         env:
           MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
           MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
         run: python auto_book.py 7
 
       - name: Upload debug screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: auto-book-debug
+          name: auto-book-debug-${{ github.run_number }}
           path: debug/
-          retention-days: 7
+          retention-days: 3

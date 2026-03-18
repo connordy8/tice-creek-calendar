@@ -1,12 +1,15 @@
 """Auto-book fitness classes for Beth on Mindbody.
 
 Logs into Mindbody, finds upcoming classes that match Beth's preferences,
-and books them automatically when registration is open.
+and books them automatically when registration is open. Then checks
+Beth's actual enrolled schedule and syncs it to Google Calendar.
 
-Target classes: Zumba, UJAM, Aquacise (Bob only), Posture Balance Core
-& Strength, Mat Yoga — all at 11 AM or later.
+Target classes: Zumba (10 AM+), UJAM, Aquacise (Bob only), Posture
+Balance Core & Strength, Mat Yoga — all at 11 AM or later unless noted.
 """
 
+import hashlib
+import json
 import logging
 import os
 import re
@@ -31,8 +34,9 @@ SCHEDULE_URL = (
 
 # Classes Beth wants to book (lowercase for matching).
 # Each entry has keywords that ALL must appear in the class text.
+# earliest_hour overrides the default for specific classes.
 TARGET_CLASSES = [
-    {"keywords": ["zumba"], "any_instructor": True},
+    {"keywords": ["zumba"], "any_instructor": True, "earliest_hour": 10},
     {"keywords": ["ujam"], "any_instructor": True},
     {"keywords": ["aquacise"], "instructor": "bob"},
     {"keywords": ["aqua"], "instructor": "bob"},
@@ -41,7 +45,17 @@ TARGET_CLASSES = [
     {"keywords": ["mat", "yoga"], "any_instructor": True},
 ]
 
-EARLIEST_HOUR = 11  # Only book classes at 11 AM or later
+DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
+
+# Mindbody "My Schedule" URL — shows Beth's enrolled classes
+MY_SCHEDULE_URL = (
+    "https://clients.mindbodyonline.com/classic/ws?studioid={}"
+    "&stype=-7&sView=week&sLoc=0&sTG=22"
+    .format(STUDIO_ID)
+)
+
+# Google Calendar event ID prefix for auto-booked classes
+BOOKED_EVENT_PREFIX = "be0ca1ab"  # "ab" = auto-booked
 
 
 def load_config():
@@ -255,14 +269,18 @@ def find_and_book_classes(page, target_date=None):
         time_str = time_match.group(1).strip().upper()
         try:
             class_time = datetime.strptime(time_str, "%I:%M %p")
-            if class_time.hour < EARLIEST_HOUR:
-                continue
         except ValueError:
             continue
 
         # Check if this matches a target class
         matched_target = class_matches(ctx)
         if not matched_target:
+            continue
+
+        # Apply per-class or default earliest hour
+        earliest = matched_target.get(
+            "earliest_hour", DEFAULT_EARLIEST_HOUR)
+        if class_time.hour < earliest:
             continue
 
         class_desc = "{} at {}".format(
@@ -365,7 +383,8 @@ def find_and_book_classes(page, target_date=None):
                     t = datetime.strptime(
                         time_match.group(1).strip().upper(),
                         "%I:%M %p")
-                    if t.hour >= EARLIEST_HOUR:
+                    if t.hour >= matched.get(
+                            "earliest_hour", DEFAULT_EARLIEST_HOUR):
                         kw = " ".join(matched["keywords"]).title()
                         desc = "{} (club — no reservation needed)".format(kw)
                         if desc not in already_booked:
@@ -376,6 +395,277 @@ def find_and_book_classes(page, target_date=None):
                     pass
 
     return booked, skipped, already_booked
+
+
+def get_enrolled_classes(page):
+    """Check Beth's actual enrolled classes on Mindbody.
+
+    Navigates to "My Schedule" and scrapes the enrolled class list.
+    Returns a list of dicts: {name, date, time, instructor, location}.
+    """
+    enrolled = []
+
+    # Try the "My Schedule" link on Mindbody
+    # The classic URL with sTG=22 shows the client's schedule
+    my_sched_url = (
+        "https://clients.mindbodyonline.com/classic/ws?studioid={}"
+        "&stype=-7&sView=week&sLoc=0&sTG=22"
+        .format(STUDIO_ID)
+    )
+    log.info("Checking Beth's enrolled classes...")
+    page.goto(my_sched_url, timeout=30000)
+    page.wait_for_timeout(3000)
+    page.screenshot(path="debug/my_schedule.png")
+
+    # Also try the main "My Schedule" page
+    alt_url = (
+        "https://clients.mindbodyonline.com/classic/mainclass"
+        "?studioid={}&tg=22&vt=&lvl=&stype=-7&view=week&tression="
+        "&page=&catid=&prodid=&date=&classid=0&prodGroupId="
+        "&ession=&rate=&loc=0"
+        .format(STUDIO_ID)
+    )
+    page.goto(alt_url, timeout=30000)
+    page.wait_for_timeout(3000)
+    page.screenshot(path="debug/my_schedule_alt.png")
+
+    body_text = page.inner_text("body")
+    log.info("My Schedule page length: {} chars".format(len(body_text)))
+
+    # Parse enrolled classes from the page using JS
+    # Each enrolled class row has class name, date, time, etc.
+    rows = page.evaluate("""() => {
+        const results = [];
+        // Look for class rows in the schedule
+        const rows = document.querySelectorAll(
+            '.oddRow, .evenRow, tr');
+        rows.forEach(row => {
+            const text = (row.innerText || '').trim();
+            if (text.length > 10) {
+                results.push(text.substring(0, 500));
+            }
+        });
+        return results;
+    }""")
+
+    log.info("Found {} rows on My Schedule".format(len(rows)))
+    for row_text in rows:
+        log.info("  Schedule row: {}".format(
+            row_text[:120].replace('\n', ' | ')))
+
+        # Parse: look for time, class name, date
+        time_match = re.search(
+            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', row_text, re.IGNORECASE)
+        date_match = re.search(
+            r'(\w+day),?\s+(\w+)\s+(\d{1,2}),?\s+(\d{4})',
+            row_text, re.IGNORECASE)
+        if not date_match:
+            # Try MM/DD/YYYY format
+            date_match = re.search(
+                r'(\d{1,2})/(\d{1,2})/(\d{4})', row_text)
+
+        if not time_match:
+            continue
+
+        # Check if this matches a target class
+        matched = class_matches(row_text)
+        if not matched:
+            continue
+
+        time_str = time_match.group(1).strip()
+        class_name = " ".join(matched["keywords"]).title()
+
+        # Build a date string
+        date_str = ""
+        if date_match:
+            try:
+                if len(date_match.groups()) == 4:
+                    # "Wednesday, March 18, 2026"
+                    month_str = date_match.group(2)
+                    day_num = date_match.group(3)
+                    year = date_match.group(4)
+                    dt = datetime.strptime(
+                        "{} {} {}".format(month_str, day_num, year),
+                        "%B %d %Y")
+                    date_str = dt.strftime("%Y-%m-%d")
+                elif len(date_match.groups()) == 3:
+                    # "3/18/2026"
+                    month = date_match.group(1)
+                    day = date_match.group(2)
+                    year = date_match.group(3)
+                    dt = datetime.strptime(
+                        "{}/{}/{}".format(month, day, year),
+                        "%m/%d/%Y")
+                    date_str = dt.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+
+        enrolled.append({
+            "name": class_name,
+            "date": date_str,
+            "time": time_str,
+            "raw": row_text[:200],
+            "keywords": matched["keywords"],
+        })
+
+    log.info("Found {} enrolled target classes".format(len(enrolled)))
+    return enrolled
+
+
+def sync_enrolled_to_gcal(enrolled_classes):
+    """Sync Beth's enrolled classes to Google Calendar.
+
+    - Adds confirmed enrollments to the calendar
+    - Removes classes she's no longer enrolled in
+    """
+    creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
+    calendar_id = os.environ.get("GOOGLE_CALENDAR_ID")
+    if not creds_json or not calendar_id:
+        log.info("Google Calendar credentials not set — skipping sync")
+        return
+
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    creds_info = json.loads(creds_json)
+    creds = service_account.Credentials.from_service_account_info(
+        creds_info,
+        scopes=["https://www.googleapis.com/auth/calendar"])
+    service = build(
+        "calendar", "v3", credentials=creds, cache_discovery=False)
+
+    # Build desired events from enrolled classes
+    desired = {}
+    for cls in enrolled_classes:
+        date_str = cls.get("date", "")
+        time_str = cls.get("time", "")
+        if not date_str or not time_str:
+            continue
+
+        try:
+            start = datetime.strptime(
+                "{} {}".format(date_str, time_str),
+                "%Y-%m-%d %I:%M %p")
+        except ValueError:
+            try:
+                start = datetime.strptime(
+                    "{} {}".format(date_str, time_str),
+                    "%Y-%m-%d %I:%M%p")
+            except ValueError:
+                log.warning("  Can't parse time: {} {}".format(
+                    date_str, time_str))
+                continue
+
+        end = start + timedelta(minutes=50)  # Most classes are 50 min
+
+        name = cls["name"]
+        is_water = any(
+            w in name.lower() for w in ["aqua", "water", "swim"])
+        emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
+
+        # Deterministic event ID
+        raw = "booked-{}-{}-{}".format(name, date_str, time_str)
+        h = hashlib.md5(raw.encode()).hexdigest()
+        eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
+
+        desired[eid] = {
+            "summary": "{} {} (Booked)".format(emoji, name),
+            "description": (
+                "Auto-booked by Beth's Calendar Bot\n"
+                "Reservation confirmed on Mindbody"
+            ),
+            "location": (
+                "Tice Creek Fitness Center, "
+                "1751 Tice Creek Dr, Walnut Creek, CA 94595"
+            ),
+            "start": {
+                "dateTime": start.strftime("%Y-%m-%dT%H:%M:%S"),
+                "timeZone": "America/Los_Angeles",
+            },
+            "end": {
+                "dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
+                "timeZone": "America/Los_Angeles",
+            },
+            "colorId": "2",  # Sage (green) — same as fitness
+        }
+
+    log.info("Desired booked events: {}".format(len(desired)))
+
+    # Find existing auto-booked events on calendar
+    time_min = (
+        datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"
+    time_max = (
+        datetime.utcnow() + timedelta(days=14)).isoformat() + "Z"
+
+    existing = {}
+    page_token = None
+    while True:
+        resp = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            maxResults=500,
+            singleEvents=True,
+            pageToken=page_token,
+        ).execute()
+
+        for item in resp.get("items", []):
+            eid = item.get("id", "")
+            if eid.startswith(BOOKED_EVENT_PREFIX):
+                existing[eid] = item
+
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    log.info("Found {} existing auto-booked events".format(len(existing)))
+
+    # Create/update enrolled classes
+    created = 0
+    updated = 0
+    for eid, body in desired.items():
+        if eid in existing:
+            old = existing[eid]
+            needs_update = (
+                old.get("summary") != body["summary"]
+                or old.get("start", {}).get("dateTime") !=
+                body["start"]["dateTime"]
+            )
+            if needs_update:
+                service.events().update(
+                    calendarId=calendar_id,
+                    eventId=eid,
+                    body=body,
+                ).execute()
+                updated += 1
+        else:
+            body["id"] = eid
+            try:
+                service.events().insert(
+                    calendarId=calendar_id,
+                    body=body,
+                ).execute()
+                created += 1
+            except Exception as e:
+                log.warning("Failed to create event: {}".format(e))
+
+    # Delete events for classes she's no longer enrolled in
+    deleted = 0
+    for eid in existing:
+        if eid not in desired:
+            try:
+                service.events().delete(
+                    calendarId=calendar_id,
+                    eventId=eid,
+                ).execute()
+                deleted += 1
+                log.info("  Removed from calendar: {}".format(
+                    existing[eid].get("summary", "")))
+            except Exception as e:
+                log.warning("Failed to delete event: {}".format(e))
+
+    log.info("Calendar sync: {} created, {} updated, {} removed".format(
+        created, updated, deleted))
 
 
 def run_auto_booking(days_ahead=7):
@@ -392,6 +682,7 @@ def run_auto_booking(days_ahead=7):
     total_booked = []
     total_skipped = []
     total_already = []
+    enrolled_classes = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -434,6 +725,17 @@ def run_auto_booking(days_ahead=7):
                 page.screenshot(path="debug/error_{}.png".format(
                     target.strftime("%m%d")))
 
+        # After booking, check what Beth is ACTUALLY enrolled in
+        log.info("")
+        log.info("=" * 60)
+        log.info("Checking Beth's Enrolled Schedule")
+        log.info("=" * 60)
+        try:
+            enrolled_classes = get_enrolled_classes(page)
+        except Exception as e:
+            log.warning("Failed to check enrolled classes: {}".format(e))
+            page.screenshot(path="debug/enrolled_error.png")
+
         browser.close()
 
     log.info("")
@@ -445,6 +747,20 @@ def run_auto_booking(days_ahead=7):
         log.info("    ✅ {}".format(b))
     log.info("  Already enrolled: {}".format(len(total_already)))
     log.info("  Skipped (not open): {}".format(len(total_skipped)))
+    log.info("  Enrolled classes found: {}".format(len(enrolled_classes)))
+
+    # Sync enrolled classes to Google Calendar
+    if enrolled_classes:
+        try:
+            sync_enrolled_to_gcal(enrolled_classes)
+        except Exception as e:
+            log.warning("Calendar sync failed: {}".format(e))
+    else:
+        log.info("No enrolled classes to sync — checking if we should "
+                 "clear stale calendar events...")
+        # If we got 0 enrolled classes, it might be a parsing issue.
+        # Only clear calendar if we're confident the check worked.
+        # For safety, don't delete anything if enrolled list is empty.
 
     return total_booked, total_skipped, total_already
 
