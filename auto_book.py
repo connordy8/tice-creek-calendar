@@ -43,6 +43,7 @@ TARGET_CLASSES = [
     {"keywords": ["water", "aerobics"], "instructor": "bob"},
     {"keywords": ["posture", "balance"], "any_instructor": True},
     {"keywords": ["mat", "yoga"], "any_instructor": True},
+    {"keywords": ["pickleball", "novice"], "any_instructor": True},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
@@ -315,8 +316,13 @@ def find_and_book_classes(page, target_date=None):
             page.screenshot(path="debug/booking_{}_{}.png".format(
                 target_date.strftime("%m%d"), entry["idx"]))
 
-            # Handle confirmation page
+            # Handle confirmation or waitlist page
+            # Mindbody may show a "Join Waitlist" button if class is full
             confirm_selectors = [
+                "input[value*='Join Waitlist']",
+                "a:has-text('Join Waitlist')",
+                "button:has-text('Join Waitlist')",
+                "input[value*='Add to Waitlist']",
                 "input[value*='Make Single Payment']",
                 "input[value*='Confirm']",
                 "input[value*='Complete']",
@@ -498,60 +504,72 @@ def get_enrolled_classes(page):
             return results;
         }""")
 
-        # Log target-matching rows (for debugging)
-        rows = []
+        # Log target-matching rows and determine enrollment status
         for row_text in all_rows:
             m = class_matches(row_text)
-            if m:
-                lower = row_text.lower()
-                is_enrolled = (
-                    "registered!" in lower
-                    or "cancel my" in lower
-                    or "you're in" in lower
-                    or "you are enrolled" in lower
-                )
-                is_waitlist = (
-                    "on waitlist" in lower
-                    or "waitlisted" in lower
-                )
-                status = "(ENROLLED)" if is_enrolled else (
-                    "(WAITLISTED)" if is_waitlist else "(not enrolled)")
-                log.info("  {} {}: {}".format(
-                    target.strftime("%a %m/%d"), status,
-                    row_text[:120].replace('\n', ' | ')))
-                if is_enrolled or is_waitlist:
-                    rows.append(row_text)
-
-        for row_text in rows:
-            log.info("  Enrolled on {}: {}".format(
-                target.strftime("%a %m/%d"),
-                row_text[:120].replace('\n', ' | ')))
-
-            matched = class_matches(row_text)
-            if not matched:
+            if not m:
                 continue
 
-            # Extract time
+            lower = row_text.lower()
+
+            # Check earliest hour
             time_match = re.search(
                 r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
                 row_text, re.IGNORECASE)
             if not time_match:
                 continue
-
             time_str = time_match.group(1).strip()
+            try:
+                class_time = datetime.strptime(
+                    time_str.upper(), "%I:%M %p")
+                earliest = m.get(
+                    "earliest_hour", DEFAULT_EARLIEST_HOUR)
+                if class_time.hour < earliest:
+                    continue
+            except ValueError:
+                continue
+
+            is_enrolled = (
+                "registered!" in lower
+                or "cancel my" in lower
+                or "you're in" in lower
+                or "you are enrolled" in lower
+            )
+            is_waitlist = (
+                "on waitlist" in lower
+                or "waitlisted" in lower
+            )
+            is_club = "club class" in lower or "club:" in lower
+
+            if is_enrolled:
+                status = "ENROLLED"
+            elif is_waitlist:
+                status = "WAITLISTED"
+            elif is_club:
+                status = "CLUB (open)"
+            else:
+                status = "not enrolled"
+
+            log.info("  {} ({}): {}".format(
+                target.strftime("%a %m/%d"), status,
+                row_text[:120].replace('\n', ' | ')))
+
             date_iso = target.strftime("%Y-%m-%d")
 
-            # Check if waitlisted vs confirmed
-            is_waitlist = "waitlist" in row_text.lower()
-
-            enrolled.append({
-                "name": " ".join(matched["keywords"]).title(),
-                "date": date_iso,
-                "time": time_str,
-                "is_waitlist": is_waitlist,
-                "raw": row_text[:200],
-                "keywords": matched["keywords"],
-            })
+            # Add to enrolled list if:
+            # - Confirmed (Registered!)
+            # - Waitlisted
+            # - Club class (no reservation needed — Beth can walk in)
+            if is_enrolled or is_waitlist or is_club:
+                enrolled.append({
+                    "name": " ".join(m["keywords"]).title(),
+                    "date": date_iso,
+                    "time": time_str,
+                    "is_waitlist": is_waitlist,
+                    "is_club": is_club,
+                    "raw": row_text[:200],
+                    "keywords": m["keywords"],
+                })
 
     log.info("Found {} enrolled target classes".format(len(enrolled)))
     return enrolled
@@ -616,16 +634,26 @@ def sync_enrolled_to_gcal(enrolled_classes):
         h = hashlib.md5(raw.encode()).hexdigest()
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
+        is_club = cls.get("is_club", False)
+
         if is_waitlist:
             summary = "\u23f3 {} (waitlist)".format(name)
             description = (
                 "Beth is on the WAITLIST for this class.\n"
-                "The system checks every 2 hours — if a spot opens, "
+                "The system checks every 2 hours \u2014 if a spot opens, "
                 "she'll be moved to confirmed and this will update "
                 "to \u2705.\n\n"
                 "Managed by Beth's Calendar Bot."
             )
             color_id = "5"  # Banana (yellow) — waitlisted
+        elif is_club:
+            summary = "{} {} (drop-in)".format(emoji, name)
+            description = (
+                "No reservation needed \u2014 Beth can just show up!\n"
+                "This is an open club class.\n\n"
+                "Managed by Beth's Calendar Bot."
+            )
+            color_id = "2"  # Sage (green) — open/confirmed
         else:
             summary = "{} {} \u2705".format(emoji, name)
             description = (
