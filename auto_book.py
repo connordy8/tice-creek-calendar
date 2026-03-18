@@ -480,31 +480,40 @@ def get_enrolled_classes(page):
         page.goto(url, timeout=30000)
         page.wait_for_timeout(2000)
 
-        # Find all class rows and check for enrollment indicators.
-        # When Beth IS enrolled, the button says "Cancel My Reservation"
-        # or "Cancel My Res" — NOT "Cancelled Today" (that means the
-        # studio cancelled the class).
-        rows = page.evaluate("""() => {
+        # Find all class rows. Check which ones Beth is enrolled in.
+        # When enrolled, the button says "Cancel My Reservation"
+        # instead of "Reserve Now".
+        all_rows = page.evaluate("""() => {
             const results = [];
             const rows = document.querySelectorAll('.oddRow, .evenRow');
             rows.forEach(row => {
                 const text = (row.innerText || '').trim();
-                const lower = text.toLowerCase();
-                // "cancel my" = Beth is enrolled and can cancel
-                // "you're in" / "enrolled" = confirmed
-                // Exclude "cancelled today/class cancelled" (studio cancelled)
-                const isEnrolled = (
-                    lower.includes('cancel my')
-                    || lower.includes("you're in")
-                    || lower.includes('you are enrolled')
-                    || lower.includes('on waitlist')
-                );
-                if (isEnrolled) {
+                if (text.length > 20) {
                     results.push(text.substring(0, 500));
                 }
             });
             return results;
         }""")
+
+        # Log target-matching rows (for debugging)
+        rows = []
+        for row_text in all_rows:
+            m = class_matches(row_text)
+            if m:
+                lower = row_text.lower()
+                is_enrolled = (
+                    "cancel my" in lower
+                    or "you're in" in lower
+                    or "you are enrolled" in lower
+                )
+                is_waitlist = "on waitlist" in lower
+                status = "(ENROLLED)" if is_enrolled else (
+                    "(WAITLISTED)" if is_waitlist else "(not enrolled)")
+                log.info("  {} {}: {}".format(
+                    target.strftime("%a %m/%d"), status,
+                    row_text[:120].replace('\n', ' | ')))
+                if is_enrolled or is_waitlist:
+                    rows.append(row_text)
 
         for row_text in rows:
             log.info("  Enrolled on {}: {}".format(
