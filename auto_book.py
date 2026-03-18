@@ -75,67 +75,51 @@ def login(page):
             "MINDBODY_EMAIL and MINDBODY_PASSWORD env vars required")
 
     log.info("Navigating to Mindbody login...")
-    page.goto(LOGIN_URL, wait_until="networkidle", timeout=30000)
-    page.wait_for_timeout(2000)
+    page.goto(LOGIN_URL, timeout=30000)
+    page.wait_for_timeout(3000)
 
-    # The login page may have different layouts. Try common selectors.
-    # Mindbody classic login has username/password fields
-    login_selectors = [
-        # Classic Mindbody login
-        {"user": "#su1UserName", "pass": "#su1Password",
-         "btn": "#btnSu1Login"},
-        # Alternative selectors
-        {"user": "input[name='requiredtxtUserName']",
-         "pass": "input[name='requiredtxtPassword']",
-         "btn": "input[name='btnLogin']"},
-        # Generic fallbacks
-        {"user": "input[type='email']", "pass": "input[type='password']",
-         "btn": "button[type='submit']"},
-        {"user": "input[name='username']", "pass": "input[name='password']",
-         "btn": "button[type='submit']"},
-    ]
+    # Check if already logged in
+    body_text = page.inner_text("body")
+    if "sign out" in body_text.lower() or "welcome" in body_text.lower():
+        log.info("Already logged in!")
+        return True
 
-    logged_in = False
-    for sel in login_selectors:
-        try:
-            user_field = page.query_selector(sel["user"])
-            pass_field = page.query_selector(sel["pass"])
-            if user_field and pass_field:
-                log.info("Found login form (selector: {})".format(sel["user"]))
-                user_field.fill(email)
-                pass_field.fill(password)
-                page.wait_for_timeout(500)
+    # Find and fill login form
+    user_field = page.query_selector("#su1UserName")
+    pass_field = page.query_selector("#su1Password")
+    login_btn = page.query_selector("#btnSu1Login")
 
-                btn = page.query_selector(sel["btn"])
-                if btn:
-                    btn.click()
-                else:
-                    pass_field.press("Enter")
-
-                page.wait_for_timeout(3000)
-                page.wait_for_load_state("networkidle", timeout=15000)
-                logged_in = True
-                break
-        except Exception as e:
-            log.debug("Selector {} failed: {}".format(sel["user"], e))
-            continue
-
-    if not logged_in:
-        # Try to find any visible login form
+    if not user_field or not pass_field:
         page.screenshot(path="debug/login_page.png")
-        log.warning("Could not find login form. Screenshot saved to debug/")
         raise RuntimeError("Login form not found")
 
-    # Check if login succeeded
-    page.wait_for_timeout(2000)
-    current_url = page.url.lower()
-    page_text = page.inner_text("body")
+    log.info("Found login form, submitting credentials...")
+    user_field.fill(email)
+    pass_field.fill(password)
+    page.wait_for_timeout(500)
 
-    if "error" in page_text.lower() and "password" in page_text.lower():
-        raise RuntimeError("Login failed — check credentials")
+    if login_btn:
+        login_btn.click()
+    else:
+        pass_field.press("Enter")
 
-    log.info("Login appears successful. Current URL: {}".format(
-        page.url[:80]))
+    # Wait for navigation after login
+    page.wait_for_timeout(5000)
+
+    # Check if login succeeded — look for "Welcome" or "Sign Out"
+    body_text = page.inner_text("body")
+    if "sign out" in body_text.lower() or "welcome" in body_text.lower():
+        log.info("Login successful!")
+        page.screenshot(path="debug/login_success.png")
+        return True
+
+    if "error" in body_text.lower() or "invalid" in body_text.lower():
+        page.screenshot(path="debug/login_failed.png")
+        raise RuntimeError("Login failed — invalid credentials")
+
+    # Might still be logged in, just a different page
+    log.info("Login submitted. Current URL: {}".format(page.url[:80]))
+    page.screenshot(path="debug/login_page.png")
     return True
 
 
@@ -145,6 +129,7 @@ def navigate_to_schedule(page, target_date=None):
         target_date = datetime.now()
 
     date_str = target_date.strftime("%m/%d/%Y")
+    # Mindbody classic group class schedule URL
     url = (
         "https://clients.mindbodyonline.com/classic/ws?studioid={}"
         "&stype=-7&sView=day&sLoc=0&date={}"
@@ -152,8 +137,12 @@ def navigate_to_schedule(page, target_date=None):
     )
     log.info("Loading schedule for {}...".format(
         target_date.strftime("%A %B %d")))
-    page.goto(url, wait_until="networkidle", timeout=30000)
-    page.wait_for_timeout(2000)
+    page.goto(url, timeout=30000)
+    page.wait_for_timeout(3000)
+
+    # Take a screenshot for debugging
+    page.screenshot(path="debug/schedule_{}.png".format(
+        target_date.strftime("%m%d")))
 
 
 def find_and_book_classes(page, target_date=None):
@@ -165,6 +154,11 @@ def find_and_book_classes(page, target_date=None):
     booked = []
     skipped = []
     already_booked = []
+
+    # Log the page content for debugging
+    body_text = page.inner_text("body")
+    log.info("Schedule page text (first 500 chars): {}".format(
+        body_text[:500].replace('\n', ' | ')))
 
     # Mindbody classic schedule uses table rows for classes
     # Each row typically has: time, class name, instructor, sign up button
