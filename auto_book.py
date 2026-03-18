@@ -198,37 +198,54 @@ def find_reservable_classes(page):
         });
 
         candidates.forEach((btn, idx) => {
-            // Walk up the DOM to find enclosing block with class info.
-            // We need to go far enough to find BOTH the time AND the
-            // class name. Keep walking until we see a class-like word
-            // (letters followed by space) AND a time, or hit a table/body.
-            let container = btn;
-            let containerText = '';
-            for (let i = 0; i < 15; i++) {
-                container = container.parentElement;
-                if (!container || container.tagName === 'BODY') break;
-                containerText = container.innerText || '';
-                // Stop at table row level if it has enough info,
-                // or at any block that has both time AND letters
-                const hasTime = /\\d{1,2}:\\d{2}\\s*(AM|PM|am|pm)/i.test(containerText);
-                const hasClassName = /[A-Za-z]{3,}/.test(containerText);
-                const isRow = container.tagName === 'TR';
-                // Stop at TR if it has class info, otherwise keep going
-                if (isRow && hasTime && containerText.length > 100) {
-                    break;
-                }
-                // Stop at any large enough container
-                if (hasTime && hasClassName && containerText.length > 150) {
-                    break;
+            // Mark the button with a data attribute
+            btn.setAttribute('data-autobook-idx', idx.toString());
+
+            // Build parent chain for debugging (first 3 buttons only)
+            let parentChain = '';
+            if (idx < 3) {
+                let el = btn;
+                for (let i = 0; i < 8; i++) {
+                    el = el.parentElement;
+                    if (!el) break;
+                    const cls = el.className ? '.' + el.className.split(' ')[0] : '';
+                    const id = el.id ? '#' + el.id : '';
+                    const text = (el.innerText || '').substring(0, 60).replace(/\\n/g, '|');
+                    parentChain += ' > ' + el.tagName + cls + id + '(' + text + ')';
                 }
             }
 
-            // Mark the button with a data attribute so we can find it later
-            btn.setAttribute('data-autobook-idx', idx.toString());
+            // Get the closest TR's text (the row this button is in)
+            const tr = btn.closest('tr');
+            const trText = tr ? (tr.innerText || '').substring(0, 300) : '';
+
+            // Also get the PREVIOUS tr sibling (class info might be there)
+            let prevTrText = '';
+            if (tr && tr.previousElementSibling) {
+                prevTrText = (tr.previousElementSibling.innerText || '').substring(0, 300);
+            }
+
+            // Try to find class info by looking at nearby TRs
+            // Walk backwards from this TR to find the class name
+            let classContext = trText;
+            if (tr) {
+                let sibling = tr;
+                for (let i = 0; i < 5; i++) {
+                    sibling = sibling.previousElementSibling;
+                    if (!sibling) break;
+                    const sibText = sibling.innerText || '';
+                    classContext = sibText + ' | ' + classContext;
+                    // Stop if we hit another Reserve button (different class)
+                    if (sibText.toLowerCase().includes('reserve')) break;
+                }
+            }
 
             results.push({
                 idx: idx,
-                containerText: containerText.substring(0, 800),
+                trText: trText.replace(/\\n/g, ' | '),
+                prevTrText: prevTrText.replace(/\\n/g, ' | '),
+                classContext: classContext.substring(0, 600).replace(/\\n/g, ' | '),
+                parentChain: parentChain.substring(0, 400),
                 btnTag: btn.tagName,
                 btnText: (btn.value || btn.innerText || '').substring(0, 50),
             });
@@ -253,16 +270,22 @@ def find_and_book_classes(page, target_date=None):
         len(reservable)))
 
     for entry in reservable:
-        log.info("  Button {}: {} — context: {}".format(
+        ctx_preview = entry.get("classContext", "")[:150].replace('\n', ' | ')
+        log.info("  Button {}: {} — TR: {} — prevTR: {}".format(
             entry["idx"], entry["btnText"],
-            entry["containerText"][:120].replace('\n', ' | ')))
+            entry.get("trText", "")[:100],
+            entry.get("prevTrText", "")[:100]))
+        if entry["idx"] < 3:
+            log.info("    parents: {}".format(
+                entry.get("parentChain", "")[:300]))
+            log.info("    classContext: {}".format(ctx_preview))
 
     # Also get the full page text for club class detection
     body_text = page.inner_text("body")
 
     # For each reserve button, check if it matches a target class
     for entry in reservable:
-        ctx = entry["containerText"].lower()
+        ctx = entry.get("classContext", "").lower()
 
         # Extract time from context
         time_match = re.search(
