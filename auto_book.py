@@ -54,8 +54,10 @@ MY_SCHEDULE_URL = (
     .format(STUDIO_ID)
 )
 
-# Google Calendar event ID prefix for auto-booked classes
-BOOKED_EVENT_PREFIX = "be0ca1ab"  # "ab" = auto-booked
+# Google Calendar event ID prefix for auto-booked classes.
+# MUST NOT start with "be0ca1" (the scraper's prefix) to avoid
+# the scraper's cleanup deleting our events.
+BOOKED_EVENT_PREFIX = "ab00ce0d"  # "ab" = auto-booked
 
 
 def load_config():
@@ -620,10 +622,11 @@ def sync_enrolled_to_gcal(enrolled_classes):
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
         desired[eid] = {
-            "summary": "{} {}".format(emoji, name),
+            "summary": "{} {} \u2705".format(emoji, name),
             "description": (
-                "Auto-booked by Beth's Calendar Bot\n"
-                "Reservation confirmed on Mindbody"
+                "Reserved on Mindbody (auto-booked)\n"
+                "This event is managed by Beth's Calendar Bot.\n"
+                "It appears because Beth is confirmed for this class."
             ),
             "location": (
                 "Tice Creek Fitness Center, "
