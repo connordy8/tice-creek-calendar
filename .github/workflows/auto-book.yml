@@ -44,7 +44,7 @@ jobs:
           MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
-        run: python auto_book.py 7
+        run: python auto_book.py 14
 
       - name: Upload debug screenshots
         if: always()

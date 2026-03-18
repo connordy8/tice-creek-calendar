@@ -472,7 +472,7 @@ def get_enrolled_classes(page):
     # "Cancel My Res" instead of "Reserve Now".
     log.info("Checking daily schedules for enrollment status...")
     today = datetime.now()
-    for day_offset in range(7):
+    for day_offset in range(14):
         target = today + timedelta(days=day_offset)
         date_str = target.strftime("%m/%d/%Y")
         url = (
@@ -606,28 +606,38 @@ def sync_enrolled_to_gcal(enrolled_classes):
         name = cls["name"]
         is_waitlist = cls.get("is_waitlist", False)
 
-        # Only put CONFIRMED classes on the calendar (not waitlisted)
-        if is_waitlist:
-            log.info("  Skipping waitlisted: {} on {} at {}".format(
-                name, date_str, time_str))
-            continue
-
         is_water = any(
             w in name.lower() for w in ["aqua", "water", "swim"])
         emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
 
-        # Deterministic event ID
+        # Deterministic event ID (same ID whether waitlisted or confirmed,
+        # so the event updates in-place when status changes)
         raw = "booked-{}-{}-{}".format(name, date_str, time_str)
         h = hashlib.md5(raw.encode()).hexdigest()
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
+        if is_waitlist:
+            summary = "\u23f3 {} (waitlist)".format(name)
+            description = (
+                "Beth is on the WAITLIST for this class.\n"
+                "The system checks every 2 hours — if a spot opens, "
+                "she'll be moved to confirmed and this will update "
+                "to \u2705.\n\n"
+                "Managed by Beth's Calendar Bot."
+            )
+            color_id = "5"  # Banana (yellow) — waitlisted
+        else:
+            summary = "{} {} \u2705".format(emoji, name)
+            description = (
+                "Beth is CONFIRMED for this class!\n"
+                "Reserved on Mindbody (auto-booked).\n\n"
+                "Managed by Beth's Calendar Bot."
+            )
+            color_id = "2"  # Sage (green) — confirmed
+
         desired[eid] = {
-            "summary": "{} {} \u2705".format(emoji, name),
-            "description": (
-                "Reserved on Mindbody (auto-booked)\n"
-                "This event is managed by Beth's Calendar Bot.\n"
-                "It appears because Beth is confirmed for this class."
-            ),
+            "summary": summary,
+            "description": description,
             "location": (
                 "Tice Creek Fitness Center, "
                 "1751 Tice Creek Dr, Walnut Creek, CA 94595"
@@ -640,7 +650,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
                 "dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
                 "timeZone": "America/Los_Angeles",
             },
-            "colorId": "2",  # Sage (green) — same as fitness
+            "colorId": color_id,
         }
 
     log.info("Desired booked events: {}".format(len(desired)))
@@ -649,9 +659,10 @@ def sync_enrolled_to_gcal(enrolled_classes):
     time_min = (
         datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"
     time_max = (
-        datetime.utcnow() + timedelta(days=14)).isoformat() + "Z"
+        datetime.utcnow() + timedelta(days=21)).isoformat() + "Z"
 
     existing = {}
+    all_calendar_items = []
     page_token = None
     while True:
         resp = service.events().list(
@@ -664,6 +675,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
         ).execute()
 
         for item in resp.get("items", []):
+            all_calendar_items.append(item)
             eid = item.get("id", "")
             if eid.startswith(BOOKED_EVENT_PREFIX):
                 existing[eid] = item
@@ -672,7 +684,50 @@ def sync_enrolled_to_gcal(enrolled_classes):
         if not page_token:
             break
 
-    log.info("Found {} existing auto-booked events".format(len(existing)))
+    log.info("Found {} existing auto-booked events (out of {} total)".format(
+        len(existing), len(all_calendar_items)))
+
+    # Also find and clean up scraper-created fitness events (prefix be0ca1)
+    # and any user-added duplicates that match our target class names.
+    # This prevents duplicates from multiple sources.
+    scraper_fitness = {}
+    user_duplicates = {}
+    target_keywords_flat = set()
+    for t in TARGET_CLASSES:
+        for kw in t["keywords"]:
+            target_keywords_flat.add(kw)
+
+    for item in all_calendar_items:
+        eid = item.get("id", "")
+        summary = (item.get("summary") or "").lower()
+
+        # Skip our own auto-booked events
+        if eid.startswith(BOOKED_EVENT_PREFIX):
+            continue
+
+        # Scraper-created fitness events (have be0ca1 prefix + fitness emoji)
+        if eid.startswith("be0ca1") and (
+                "\U0001f3cb" in summary or "\U0001f3ca" in summary):
+            scraper_fitness[eid] = item
+            continue
+
+        # User-added events that match target class names
+        # (no managed prefix, but contain class keywords)
+        for kw in target_keywords_flat:
+            if kw in summary:
+                user_duplicates[eid] = item
+                break
+
+    if scraper_fitness:
+        log.info("Found {} scraper-created fitness events to clean up"
+                 .format(len(scraper_fitness)))
+    if user_duplicates:
+        log.info("Found {} user-added duplicate events to clean up"
+                 .format(len(user_duplicates)))
+        for eid, item in user_duplicates.items():
+            log.info("  Duplicate: {} on {}".format(
+                item.get("summary", ""),
+                item.get("start", {}).get("dateTime", "")))
 
     # Create/update enrolled classes
     created = 0
@@ -717,6 +772,32 @@ def sync_enrolled_to_gcal(enrolled_classes):
                     existing[eid].get("summary", "")))
             except Exception as e:
                 log.warning("Failed to delete event: {}".format(e))
+
+    # Delete scraper-created fitness events (now managed by auto-booker)
+    for eid, item in scraper_fitness.items():
+        try:
+            service.events().delete(
+                calendarId=calendar_id,
+                eventId=eid,
+            ).execute()
+            deleted += 1
+            log.info("  Removed scraper fitness event: {}".format(
+                item.get("summary", "")))
+        except Exception as e:
+            log.warning("Failed to delete scraper event: {}".format(e))
+
+    # Delete user-added duplicates
+    for eid, item in user_duplicates.items():
+        try:
+            service.events().delete(
+                calendarId=calendar_id,
+                eventId=eid,
+            ).execute()
+            deleted += 1
+            log.info("  Removed user duplicate: {}".format(
+                item.get("summary", "")))
+        except Exception as e:
+            log.warning("Failed to delete user event: {}".format(e))
 
     log.info("Calendar sync: {} created, {} updated, {} removed".format(
         created, updated, deleted))
@@ -825,7 +906,7 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    days = 7
+    days = 14
     if len(sys.argv) > 1:
         try:
             days = int(sys.argv[1])

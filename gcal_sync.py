@@ -95,83 +95,14 @@ def sync_to_google_calendar(classes, movies, concerts, config):
     desired_events = {}  # event_id -> event body
 
     # --- Fitness classes ---
-    for cls in (classes or []):
-        start_iso = cls.get("start_iso", "")
-        if not start_iso:
-            continue
-        try:
-            start = datetime.fromisoformat(start_iso)
-        except ValueError:
-            continue
-
-        dur = cls.get("duration_minutes", default_dur)
-        if dur <= 0:
-            dur = default_dur
-        end = start + timedelta(minutes=dur)
-
-        name = cls["name"]
-        instructor = cls.get("instructor", "")
-        source = cls.get("source", "")
-
-        # Apply custom titles
-        display_name = name
-        for rule in config.get("custom_titles", []):
-            match_name = rule.get("match_name", "").lower()
-            match_instr = rule.get("match_instructor", "").lower()
-            if match_name and match_name in name.lower():
-                if match_instr and match_instr in instructor.lower():
-                    display_name = rule["title"]
-                    break
-                elif not match_instr:
-                    display_name = rule["title"]
-                    break
-
-        is_water = any(
-            w in name.lower() for w in ["aqua", "water", "swim", "pool"])
-        emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
-
-        desc_parts = []
-        if early_start > 0:
-            real_time = cls.get("time", "")
-            end_time = cls.get("end_time", "")
-            if real_time and end_time:
-                desc_parts.append("Class time: {} - {}".format(
-                    real_time, end_time))
-            elif real_time:
-                desc_parts.append("Class time: {}".format(real_time))
-        if instructor:
-            desc_parts.append("Instructor: {}".format(instructor))
-        if source:
-            desc_parts.append("Schedule: {}".format(
-                source.replace("_", " ").title()))
-        email_notes = cls.get("email_notes", "")
-        if email_notes:
-            desc_parts.append("Note: {}".format(email_notes))
-        if cls.get("is_manual"):
-            desc_parts.append(
-                "Added via email to bethcalendarupdate@gmail.com")
-        else:
-            desc_parts.append("Auto-synced from ticefitnesscenter.com")
-
-        cal_start = start - timedelta(minutes=early_start)
-        eid = make_event_id("fitness", "{}-{}-{}".format(
-            name, cls.get("date", ""), start_iso))
-
-        from scraper import LOCATION
-        desired_events[eid] = {
-            "summary": "{} {}".format(emoji, display_name),
-            "description": "\n".join(desc_parts),
-            "location": cls.get("location") or LOCATION,
-            "start": {
-                "dateTime": cal_start.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "end": {
-                "dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "colorId": COLOR_FITNESS,
-        }
+    # NOTE: Fitness classes are NO LONGER managed by the scraper.
+    # The auto-booker (auto_book.py) is the sole source for fitness
+    # events. It only adds classes Beth is actually enrolled in or
+    # waitlisted for, with ✅/⏳ status indicators.
+    # Any old scraper-created fitness events (prefix "be0ca1" with
+    # fitness emoji) will be cleaned up by the deletion step below.
+    log.info("Skipping {} fitness classes (managed by auto-booker)".format(
+        len(classes or [])))
 
     # --- Movies ---
     for mov in (movies or []):
@@ -282,9 +213,8 @@ def sync_to_google_calendar(classes, movies, concerts, config):
             "colorId": COLOR_CONCERT,
         }
 
-    log.info("Desired events: {} fitness, {} movies, {} concerts".format(
-        sum(1 for e in desired_events.values()
-            if e["colorId"] == COLOR_FITNESS),
+    log.info("Desired events: {} movies, {} concerts (fitness managed "
+             "by auto-booker)".format(
         sum(1 for e in desired_events.values()
             if e["colorId"] == COLOR_MOVIE),
         sum(1 for e in desired_events.values()
