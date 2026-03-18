@@ -405,108 +405,128 @@ def get_enrolled_classes(page):
     """
     enrolled = []
 
-    # Try the "My Schedule" link on Mindbody
-    # The classic URL with sTG=22 shows the client's schedule
-    my_sched_url = (
-        "https://clients.mindbodyonline.com/classic/ws?studioid={}"
-        "&stype=-7&sView=week&sLoc=0&sTG=22"
-        .format(STUDIO_ID)
-    )
     log.info("Checking Beth's enrolled classes...")
-    page.goto(my_sched_url, timeout=30000)
-    page.wait_for_timeout(3000)
-    page.screenshot(path="debug/my_schedule.png")
 
-    # Also try the main "My Schedule" page
-    alt_url = (
-        "https://clients.mindbodyonline.com/classic/mainclass"
-        "?studioid={}&tg=22&vt=&lvl=&stype=-7&view=week&tression="
-        "&page=&catid=&prodid=&date=&classid=0&prodGroupId="
-        "&ession=&rate=&loc=0"
-        .format(STUDIO_ID)
-    )
-    page.goto(alt_url, timeout=30000)
-    page.wait_for_timeout(3000)
-    page.screenshot(path="debug/my_schedule_alt.png")
+    # Try multiple approaches to find Beth's schedule
 
-    body_text = page.inner_text("body")
-    log.info("My Schedule page length: {} chars".format(len(body_text)))
+    # Approach 1: Look for "My Info" or "My Classes" link on current page
+    page.goto(SCHEDULE_URL, timeout=30000)
+    page.wait_for_timeout(2000)
 
-    # Parse enrolled classes from the page using JS
-    # Each enrolled class row has class name, date, time, etc.
-    rows = page.evaluate("""() => {
+    # Find links to my schedule / my classes
+    links = page.evaluate("""() => {
         const results = [];
-        // Look for class rows in the schedule
-        const rows = document.querySelectorAll(
-            '.oddRow, .evenRow, tr');
-        rows.forEach(row => {
-            const text = (row.innerText || '').trim();
-            if (text.length > 10) {
-                results.push(text.substring(0, 500));
+        document.querySelectorAll('a').forEach(a => {
+            const text = (a.innerText || '').toLowerCase();
+            const href = a.href || '';
+            if (text.includes('my info') || text.includes('my class')
+                || text.includes('my schedule') || text.includes('my account')
+                || href.includes('myinfo') || href.includes('myclass')
+                || href.includes('mySch') || href.includes('su1.asp')
+            ) {
+                results.push({text: a.innerText.trim(), href: href});
             }
         });
         return results;
     }""")
+    log.info("Found {} 'My' links: {}".format(len(links), links))
 
-    log.info("Found {} rows on My Schedule".format(len(rows)))
-    for row_text in rows:
-        log.info("  Schedule row: {}".format(
-            row_text[:120].replace('\n', ' | ')))
+    # Try clicking "My Info" if found
+    my_info_link = page.query_selector(
+        "a:has-text('My Info'), a:has-text('My Account'), "
+        "a:has-text('My Classes')")
+    if my_info_link:
+        log.info("Clicking My Info link...")
+        my_info_link.click()
+        page.wait_for_timeout(3000)
+        page.screenshot(path="debug/my_info.png")
 
-        # Parse: look for time, class name, date
-        time_match = re.search(
-            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', row_text, re.IGNORECASE)
-        date_match = re.search(
-            r'(\w+day),?\s+(\w+)\s+(\d{1,2}),?\s+(\d{4})',
-            row_text, re.IGNORECASE)
-        if not date_match:
-            # Try MM/DD/YYYY format
-            date_match = re.search(
-                r'(\d{1,2})/(\d{1,2})/(\d{4})', row_text)
+    # Approach 2: Try the direct "My Schedule" URLs
+    schedule_urls = [
+        ("https://clients.mindbodyonline.com/classic/ws?studioid={}"
+         "&stype=-7&sView=week&sLoc=0&sTG=22").format(STUDIO_ID),
+        ("https://clients.mindbodyonline.com/ASP/my_sch.asp"
+         "?studioid={}").format(STUDIO_ID),
+        ("https://clients.mindbodyonline.com/classic/myinfo"
+         "?studioid={}").format(STUDIO_ID),
+    ]
 
-        if not time_match:
-            continue
+    best_body = ""
+    for url in schedule_urls:
+        page.goto(url, timeout=30000)
+        page.wait_for_timeout(2000)
+        body_text = page.inner_text("body")
+        log.info("Tried {}: {} chars".format(
+            url.split("?")[0].split("/")[-1], len(body_text)))
+        if len(body_text) > len(best_body):
+            best_body = body_text
+        page.screenshot(path="debug/my_sched_{}.png".format(
+            url.split("/")[-1][:20].replace("?", "_")))
 
-        # Check if this matches a target class
-        matched = class_matches(row_text)
-        if not matched:
-            continue
+    # Approach 3: Check each day's schedule for "enrolled" / "Cancel"
+    # indicators on Beth's target classes.
+    # When logged in, if Beth is enrolled in a class, the schedule shows
+    # "Cancel My Res" instead of "Reserve Now".
+    log.info("Checking daily schedules for enrollment status...")
+    today = datetime.now()
+    for day_offset in range(7):
+        target = today + timedelta(days=day_offset)
+        date_str = target.strftime("%m/%d/%Y")
+        url = (
+            "https://clients.mindbodyonline.com/classic/ws?studioid={}"
+            "&stype=-7&sView=day&sLoc=0&date={}"
+            .format(STUDIO_ID, date_str)
+        )
+        page.goto(url, timeout=30000)
+        page.wait_for_timeout(2000)
 
-        time_str = time_match.group(1).strip()
-        class_name = " ".join(matched["keywords"]).title()
+        # Find all class rows and check for enrollment indicators
+        rows = page.evaluate("""() => {
+            const results = [];
+            const rows = document.querySelectorAll('.oddRow, .evenRow');
+            rows.forEach(row => {
+                const text = (row.innerText || '').trim();
+                // Only include rows that have Cancel (enrolled) indicators
+                const lower = text.toLowerCase();
+                if (lower.includes('cancel') || lower.includes("you're in")
+                    || lower.includes('enrolled') || lower.includes('waitlist')
+                ) {
+                    results.push(text.substring(0, 500));
+                }
+            });
+            return results;
+        }""")
 
-        # Build a date string
-        date_str = ""
-        if date_match:
-            try:
-                if len(date_match.groups()) == 4:
-                    # "Wednesday, March 18, 2026"
-                    month_str = date_match.group(2)
-                    day_num = date_match.group(3)
-                    year = date_match.group(4)
-                    dt = datetime.strptime(
-                        "{} {} {}".format(month_str, day_num, year),
-                        "%B %d %Y")
-                    date_str = dt.strftime("%Y-%m-%d")
-                elif len(date_match.groups()) == 3:
-                    # "3/18/2026"
-                    month = date_match.group(1)
-                    day = date_match.group(2)
-                    year = date_match.group(3)
-                    dt = datetime.strptime(
-                        "{}/{}/{}".format(month, day, year),
-                        "%m/%d/%Y")
-                    date_str = dt.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
+        for row_text in rows:
+            log.info("  Enrolled on {}: {}".format(
+                target.strftime("%a %m/%d"),
+                row_text[:120].replace('\n', ' | ')))
 
-        enrolled.append({
-            "name": class_name,
-            "date": date_str,
-            "time": time_str,
-            "raw": row_text[:200],
-            "keywords": matched["keywords"],
-        })
+            matched = class_matches(row_text)
+            if not matched:
+                continue
+
+            # Extract time
+            time_match = re.search(
+                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
+                row_text, re.IGNORECASE)
+            if not time_match:
+                continue
+
+            time_str = time_match.group(1).strip()
+            date_iso = target.strftime("%Y-%m-%d")
+
+            # Check if waitlisted vs confirmed
+            is_waitlist = "waitlist" in row_text.lower()
+
+            enrolled.append({
+                "name": " ".join(matched["keywords"]).title(),
+                "date": date_iso,
+                "time": time_str,
+                "is_waitlist": is_waitlist,
+                "raw": row_text[:200],
+                "keywords": matched["keywords"],
+            })
 
     log.info("Found {} enrolled target classes".format(len(enrolled)))
     return enrolled
@@ -559,6 +579,14 @@ def sync_enrolled_to_gcal(enrolled_classes):
         end = start + timedelta(minutes=50)  # Most classes are 50 min
 
         name = cls["name"]
+        is_waitlist = cls.get("is_waitlist", False)
+
+        # Only put CONFIRMED classes on the calendar (not waitlisted)
+        if is_waitlist:
+            log.info("  Skipping waitlisted: {} on {} at {}".format(
+                name, date_str, time_str))
+            continue
+
         is_water = any(
             w in name.lower() for w in ["aqua", "water", "swim"])
         emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
@@ -569,7 +597,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
         desired[eid] = {
-            "summary": "{} {} (Booked)".format(emoji, name),
+            "summary": "{} {}".format(emoji, name),
             "description": (
                 "Auto-booked by Beth's Calendar Bot\n"
                 "Reservation confirmed on Mindbody"
