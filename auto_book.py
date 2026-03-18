@@ -178,6 +178,54 @@ def navigate_to_schedule(page, target_date=None):
         target_date.strftime("%m%d")))
 
 
+def find_reservable_classes(page):
+    """Use JavaScript to find all Reserve buttons and their associated class info.
+
+    Walks up the DOM from each Reserve button to find the class name,
+    instructor, and time — regardless of HTML structure (tr, div, etc.).
+    Returns a list of dicts with class info and a selector to click.
+    """
+    return page.evaluate("""() => {
+        const results = [];
+        // Find all elements that look like Reserve/Sign Up buttons
+        const candidates = [
+            ...document.querySelectorAll('input[value*="Reserve"]'),
+            ...document.querySelectorAll('input[value*="Sign Up"]'),
+            ...document.querySelectorAll('a'),
+        ].filter(el => {
+            const text = (el.value || el.innerText || '').toLowerCase();
+            return text.includes('reserve') || text.includes('sign up');
+        });
+
+        candidates.forEach((btn, idx) => {
+            // Walk up the DOM to find enclosing block with class info
+            // Try progressively larger ancestors until we find a time
+            let container = btn;
+            let containerText = '';
+            for (let i = 0; i < 10; i++) {
+                container = container.parentElement;
+                if (!container) break;
+                containerText = container.innerText || '';
+                // Stop when we find a time pattern (like "10:00 AM")
+                if (/\\d{1,2}:\\d{2}\\s*(AM|PM|am|pm)/i.test(containerText)) {
+                    break;
+                }
+            }
+
+            // Mark the button with a data attribute so we can find it later
+            btn.setAttribute('data-autobook-idx', idx.toString());
+
+            results.push({
+                idx: idx,
+                containerText: containerText.substring(0, 500),
+                btnTag: btn.tagName,
+                btnText: (btn.value || btn.innerText || '').substring(0, 50),
+            });
+        });
+        return results;
+    }""")
+
+
 def find_and_book_classes(page, target_date=None):
     """Find matching classes on the schedule and attempt to book them."""
     if target_date is None:
@@ -188,192 +236,80 @@ def find_and_book_classes(page, target_date=None):
     skipped = []
     already_booked = []
 
-    # The Mindbody classic schedule renders classes as a list/grid,
-    # not a traditional HTML table. Parse the full page text to find
-    # classes, then use links on the page to book them.
+    # Use JavaScript to find all reservable classes and their context
+    reservable = find_reservable_classes(page)
+    log.info("Found {} reserve/sign-up buttons on page".format(
+        len(reservable)))
+
+    for entry in reservable:
+        log.info("  Button {}: {} — context: {}".format(
+            entry["idx"], entry["btnText"],
+            entry["containerText"][:120].replace('\n', ' | ')))
+
+    # Also get the full page text for club class detection
     body_text = page.inner_text("body")
-    log.info("Schedule page length: {} chars".format(len(body_text)))
 
-    # Find all clickable links on the page — these contain sign-up links
-    all_links = page.query_selector_all("a")
-    log.info("Found {} links on page".format(len(all_links)))
+    # For each reserve button, check if it matches a target class
+    for entry in reservable:
+        ctx = entry["containerText"].lower()
 
-    # Parse schedule text to find matching classes
-    # Format from logs: "11:00 am PDT | UJAM and Stretch | SABRINA ..."
-    # Or: "(8 Reserved, 0 Open) | Zumba Club | INSTRUCTOR | ..."
-    lines = body_text.split('\n')
-
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-
-        # Look for time pattern
+        # Extract time from context
         time_match = re.search(
-            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', line, re.IGNORECASE)
+            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', ctx, re.IGNORECASE)
         if not time_match:
             continue
 
         time_str = time_match.group(1).strip().upper()
         try:
-            class_time = datetime.strptime(
-                time_str.replace(" AM", " AM").replace(" PM", " PM"),
-                "%I:%M %p")
+            class_time = datetime.strptime(time_str, "%I:%M %p")
             if class_time.hour < EARLIEST_HOUR:
                 continue
         except ValueError:
             continue
 
-        # Combine this line with nearby lines for context
-        context = " ".join(
-            lines[max(0, i-1):min(len(lines), i+3)]).lower()
-
-        # Check if any target class is in the context
+        # Check if this matches a target class
         matched_target = None
         for target in TARGET_CLASSES:
-            if target["name"] in context:
+            if target["name"] in ctx:
                 if target.get("any_instructor"):
                     matched_target = target
                     break
                 elif target.get("instructor"):
-                    if target["instructor"] in context:
+                    if target["instructor"] in ctx:
                         matched_target = target
                         break
 
         if not matched_target:
             continue
 
-        class_desc = line.strip()[:80]
-        log.info("Found matching class: {} (matched: {})".format(
-            class_desc, matched_target["name"]))
+        class_desc = "{} at {}".format(
+            matched_target["name"].title(), time_str)
+        log.info("Matched: {} (button {})".format(
+            class_desc, entry["idx"]))
 
-        # Check if already booked
-        if any(x in context for x in [
+        # Check if already enrolled
+        if any(x in ctx for x in [
                 "cancel my", "you're in", "enrolled"]):
             log.info("  Already enrolled, skipping")
             already_booked.append(class_desc)
             continue
 
-        # Find the Reserve/Sign Up button for this class.
-        book_link = None
-
-        # Debug: find ALL elements containing "Reserve" text
-        if i < 2 and matched_target:
-            try:
-                # Search for any element with "Reserve" in its text
-                reserve_els = page.evaluate(
-                    """() => {
-                        const results = [];
-                        // Check inputs
-                        document.querySelectorAll('input').forEach(el => {
-                            if ((el.value || '').includes('Reserve')) {
-                                results.push('INPUT: ' + el.outerHTML.substring(0, 200));
-                            }
-                        });
-                        // Check links and buttons
-                        document.querySelectorAll('a, button').forEach(el => {
-                            if ((el.innerText || '').includes('Reserve')) {
-                                const tr = el.closest('tr');
-                                const rowText = tr ? tr.innerText.substring(0, 100) : 'no-tr';
-                                results.push(el.tagName + ': ' + el.outerHTML.substring(0, 150) + ' ROW: ' + rowText);
-                            }
-                        });
-                        return results.slice(0, 5);
-                    }""")
-                for r in reserve_els:
-                    log.info("  DEBUG reserve: {}".format(r[:250]))
-                if not reserve_els:
-                    log.info("  DEBUG: No Reserve elements found on page!")
-            except Exception as e:
-                log.info("  DEBUG error: {}".format(e))
-
-        # Method 1: Find all reserve/sign-up elements and match by row
-        for link in all_links:
-            try:
-                link_text = link.inner_text().strip().lower()
-                if not any(w in link_text for w in [
-                        "reserve", "sign up", "book", "enroll"]):
-                    continue
-
-                # Check the <tr> ancestor for this link
-                row_text = link.evaluate(
-                    "el => {"
-                    "  let tr = el.closest('tr');"
-                    "  return tr ? tr.innerText : '';"
-                    "}")
-                if not row_text:
-                    continue
-                rt_lower = row_text.lower()
-                if matched_target["name"] in rt_lower:
-                    if matched_target.get("instructor"):
-                        if matched_target["instructor"] in rt_lower:
-                            book_link = link
-                            log.info("  Found booking link in row")
-                            break
-                    else:
-                        book_link = link
-                        log.info("  Found booking link in row")
-                        break
-            except Exception:
+        # Click the reserve button using the data attribute we set
+        try:
+            selector = '[data-autobook-idx="{}"]'.format(entry["idx"])
+            btn = page.query_selector(selector)
+            if not btn:
+                log.warning("  Could not re-find button {}".format(
+                    entry["idx"]))
+                skipped.append(class_desc)
                 continue
 
-        if not book_link:
-            # Method 2: Find "Reserve Now" buttons and check their
-            # table row (tr) for the matching class name + time
-            reserve_btns = page.query_selector_all(
-                "input[value*='Reserve'], a:has-text('Reserve Now'), "
-                "input[value*='Sign Up'], a:has-text('Sign Up')")
-            log.info("  Found {} reserve/sign-up buttons total".format(
-                len(reserve_btns)))
-
-            for btn in reserve_btns:
-                try:
-                    # Get the closest <tr> ancestor's text
-                    row_text = btn.evaluate(
-                        "el => {"
-                        "  let tr = el.closest('tr');"
-                        "  return tr ? tr.innerText : '';"
-                        "}")
-                    if not row_text:
-                        continue
-                    rt_lower = row_text.lower()
-                    if matched_target["name"] in rt_lower:
-                        # Also check instructor if needed
-                        if matched_target.get("instructor"):
-                            if matched_target["instructor"] in rt_lower:
-                                book_link = btn
-                                log.info("  Found reserve button in "
-                                         "matching row")
-                                break
-                        else:
-                            book_link = btn
-                            log.info("  Found reserve button in "
-                                     "matching row")
-                            break
-                except Exception:
-                    continue
-
-        if not book_link:
-            # Check if this is a CLUB class (no reservation needed)
-            if "club" in context:
-                log.info("  Club class — no reservation needed, "
-                         "Beth can just show up")
-                already_booked.append(
-                    "{} (open — no reservation)".format(class_desc))
-            else:
-                log.info("  No booking link found — registration may "
-                         "not be open yet or class is full")
-                skipped.append(class_desc)
-            continue
-
-        # Click the booking link
-        try:
-            log.info("  Clicking sign-up link...")
-            book_link.click()
+            log.info("  Clicking reserve button...")
+            btn.click()
             page.wait_for_timeout(4000)
 
-            page.screenshot(path="debug/booking_{}.png".format(
-                target_date.strftime("%m%d")))
+            page.screenshot(path="debug/booking_{}_{}.png".format(
+                target_date.strftime("%m%d"), entry["idx"]))
 
             # Handle confirmation page
             confirm_selectors = [
@@ -403,22 +339,24 @@ def find_and_book_classes(page, target_date=None):
                     "successfully", "confirmed", "you're booked",
                     "you are enrolled", "thank you",
                     "added to your schedule"]):
-                log.info("  ✅ Booked successfully!")
+                log.info("  Booked successfully!")
                 booked.append(class_desc)
             elif any(w in result_text for w in [
                     "waitlist", "full", "no spots"]):
-                log.info("  ⚠️ Class full, may be waitlisted")
+                log.info("  Class full, may be waitlisted")
                 booked.append("{} (waitlist)".format(class_desc))
             elif any(w in result_text for w in [
                     "error", "failed", "unable"]):
-                log.warning("  ❌ Booking may have failed")
+                log.warning("  Booking may have failed")
                 skipped.append(class_desc)
             else:
-                log.info("  Booking submitted")
+                log.info("  Booking submitted (checking result...)")
                 booked.append(class_desc)
 
-            # Navigate back
+            # Navigate back for next class
             navigate_to_schedule(page, target_date)
+            # Re-tag buttons after navigation (page reloaded)
+            find_reservable_classes(page)
 
         except Exception as e:
             log.warning("  Failed to book: {}".format(e))
@@ -427,6 +365,33 @@ def find_and_book_classes(page, target_date=None):
                 navigate_to_schedule(page, target_date)
             except Exception:
                 pass
+
+    # Check for target classes that are "CLUB" (no reservation needed)
+    lines = body_text.split('\n')
+    for i, line in enumerate(lines):
+        line_lower = line.strip().lower()
+        if "club" not in line_lower:
+            continue
+        for target in TARGET_CLASSES:
+            if target["name"] in line_lower:
+                # Check time
+                time_match = re.search(
+                    r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
+                    line_lower, re.IGNORECASE)
+                if time_match:
+                    try:
+                        t = datetime.strptime(
+                            time_match.group(1).strip().upper(),
+                            "%I:%M %p")
+                        if t.hour >= EARLIEST_HOUR:
+                            desc = "{} (club — no reservation needed)".format(
+                                target["name"].title())
+                            if desc not in already_booked:
+                                already_booked.append(desc)
+                                log.info("Club class: {} — just show up"
+                                         .format(desc))
+                    except ValueError:
+                        pass
 
     return booked, skipped, already_booked
 
