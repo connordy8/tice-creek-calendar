@@ -1,0 +1,44 @@
+name: Auto-Book Classes
+
+on:
+  # Run every morning at 5:30 AM Pacific (1:30 PM UTC)
+  # This gives it time to book before Beth's day starts
+  schedule:
+    - cron: "30 13 * * *"
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  auto-book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Auto-book classes
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+        run: python auto_book.py 7
+
+      - name: Upload debug screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-book-debug
+          path: debug/
+          retention-days: 7
