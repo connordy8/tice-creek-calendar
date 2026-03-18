@@ -29,14 +29,16 @@ SCHEDULE_URL = (
     .format(STUDIO_ID)
 )
 
-# Classes Beth wants to book (lowercase for matching)
+# Classes Beth wants to book (lowercase for matching).
+# Each entry has keywords that ALL must appear in the class text.
 TARGET_CLASSES = [
-    {"name": "zumba", "any_instructor": True},
-    {"name": "ujam", "any_instructor": True},
-    {"name": "aquacise", "instructor": "bob"},
-    {"name": "water aerobics", "instructor": "bob"},
-    {"name": "posture balance core", "any_instructor": True},
-    {"name": "mat yoga", "any_instructor": True},
+    {"keywords": ["zumba"], "any_instructor": True},
+    {"keywords": ["ujam"], "any_instructor": True},
+    {"keywords": ["aquacise"], "instructor": "bob"},
+    {"keywords": ["aqua"], "instructor": "bob"},
+    {"keywords": ["water", "aerobics"], "instructor": "bob"},
+    {"keywords": ["posture", "balance"], "any_instructor": True},
+    {"keywords": ["mat", "yoga"], "any_instructor": True},
 ]
 
 EARLIEST_HOUR = 11  # Only book classes at 11 AM or later
@@ -51,19 +53,19 @@ def load_config():
     return {}
 
 
-def class_matches(class_name, instructor_name):
-    """Check if a class matches Beth's target list."""
-    cn = class_name.lower().strip()
-    inst = instructor_name.lower().strip()
+def class_matches(text):
+    """Check if text matches any of Beth's target classes.
 
+    Returns the matched target dict, or None.
+    """
+    t = text.lower()
     for target in TARGET_CLASSES:
-        target_name = target["name"]
-        if target_name in cn:
+        if all(kw in t for kw in target["keywords"]):
             if target.get("any_instructor"):
-                return True
-            if target.get("instructor") and target["instructor"] in inst:
-                return True
-    return False
+                return target
+            if target.get("instructor") and target["instructor"] in t:
+                return target
+    return None
 
 
 def login(page):
@@ -201,51 +203,14 @@ def find_reservable_classes(page):
             // Mark the button with a data attribute
             btn.setAttribute('data-autobook-idx', idx.toString());
 
-            // Build parent chain for debugging (first 3 buttons only)
-            let parentChain = '';
-            if (idx < 3) {
-                let el = btn;
-                for (let i = 0; i < 8; i++) {
-                    el = el.parentElement;
-                    if (!el) break;
-                    const cls = el.className ? '.' + el.className.split(' ')[0] : '';
-                    const id = el.id ? '#' + el.id : '';
-                    const text = (el.innerText || '').substring(0, 60).replace(/\\n/g, '|');
-                    parentChain += ' > ' + el.tagName + cls + id + '(' + text + ')';
-                }
-            }
-
-            // Get the closest TR's text (the row this button is in)
-            const tr = btn.closest('tr');
-            const trText = tr ? (tr.innerText || '').substring(0, 300) : '';
-
-            // Also get the PREVIOUS tr sibling (class info might be there)
-            let prevTrText = '';
-            if (tr && tr.previousElementSibling) {
-                prevTrText = (tr.previousElementSibling.innerText || '').substring(0, 300);
-            }
-
-            // Try to find class info by looking at nearby TRs
-            // Walk backwards from this TR to find the class name
-            let classContext = trText;
-            if (tr) {
-                let sibling = tr;
-                for (let i = 0; i < 5; i++) {
-                    sibling = sibling.previousElementSibling;
-                    if (!sibling) break;
-                    const sibText = sibling.innerText || '';
-                    classContext = sibText + ' | ' + classContext;
-                    // Stop if we hit another Reserve button (different class)
-                    if (sibText.toLowerCase().includes('reserve')) break;
-                }
-            }
+            // Mindbody classic uses div.oddRow / div.evenRow for class rows.
+            // The row contains: time, reservation count, class name, instructor.
+            const row = btn.closest('.oddRow, .evenRow, tr');
+            const rowText = row ? (row.innerText || '') : '';
 
             results.push({
                 idx: idx,
-                trText: trText.replace(/\\n/g, ' | '),
-                prevTrText: prevTrText.replace(/\\n/g, ' | '),
-                classContext: classContext.substring(0, 600).replace(/\\n/g, ' | '),
-                parentChain: parentChain.substring(0, 400),
+                rowText: rowText.substring(0, 500).replace(/\\n/g, ' | '),
                 btnTag: btn.tagName,
                 btnText: (btn.value || btn.innerText || '').substring(0, 50),
             });
@@ -270,22 +235,16 @@ def find_and_book_classes(page, target_date=None):
         len(reservable)))
 
     for entry in reservable:
-        ctx_preview = entry.get("classContext", "")[:150].replace('\n', ' | ')
-        log.info("  Button {}: {} — TR: {} — prevTR: {}".format(
+        log.info("  Button {}: {} — row: {}".format(
             entry["idx"], entry["btnText"],
-            entry.get("trText", "")[:100],
-            entry.get("prevTrText", "")[:100]))
-        if entry["idx"] < 3:
-            log.info("    parents: {}".format(
-                entry.get("parentChain", "")[:300]))
-            log.info("    classContext: {}".format(ctx_preview))
+            entry.get("rowText", "")[:150]))
 
     # Also get the full page text for club class detection
     body_text = page.inner_text("body")
 
     # For each reserve button, check if it matches a target class
     for entry in reservable:
-        ctx = entry.get("classContext", "").lower()
+        ctx = entry.get("rowText", "").lower()
 
         # Extract time from context
         time_match = re.search(
@@ -302,22 +261,12 @@ def find_and_book_classes(page, target_date=None):
             continue
 
         # Check if this matches a target class
-        matched_target = None
-        for target in TARGET_CLASSES:
-            if target["name"] in ctx:
-                if target.get("any_instructor"):
-                    matched_target = target
-                    break
-                elif target.get("instructor"):
-                    if target["instructor"] in ctx:
-                        matched_target = target
-                        break
-
+        matched_target = class_matches(ctx)
         if not matched_target:
             continue
 
         class_desc = "{} at {}".format(
-            matched_target["name"].title(), time_str)
+            " ".join(matched_target["keywords"]).title(), time_str)
         log.info("Matched: {} (button {})".format(
             class_desc, entry["idx"]))
 
@@ -406,26 +355,25 @@ def find_and_book_classes(page, target_date=None):
         line_lower = line.strip().lower()
         if "club" not in line_lower:
             continue
-        for target in TARGET_CLASSES:
-            if target["name"] in line_lower:
-                # Check time
-                time_match = re.search(
-                    r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
-                    line_lower, re.IGNORECASE)
-                if time_match:
-                    try:
-                        t = datetime.strptime(
-                            time_match.group(1).strip().upper(),
-                            "%I:%M %p")
-                        if t.hour >= EARLIEST_HOUR:
-                            desc = "{} (club — no reservation needed)".format(
-                                target["name"].title())
-                            if desc not in already_booked:
-                                already_booked.append(desc)
-                                log.info("Club class: {} — just show up"
-                                         .format(desc))
-                    except ValueError:
-                        pass
+        matched = class_matches(line_lower)
+        if matched:
+            time_match = re.search(
+                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
+                line_lower, re.IGNORECASE)
+            if time_match:
+                try:
+                    t = datetime.strptime(
+                        time_match.group(1).strip().upper(),
+                        "%I:%M %p")
+                    if t.hour >= EARLIEST_HOUR:
+                        kw = " ".join(matched["keywords"]).title()
+                        desc = "{} (club — no reservation needed)".format(kw)
+                        if desc not in already_booked:
+                            already_booked.append(desc)
+                            log.info("Club class: {} — just show up"
+                                     .format(desc))
+                except ValueError:
+                    pass
 
     return booked, skipped, already_booked
 
