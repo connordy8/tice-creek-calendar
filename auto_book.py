@@ -155,164 +155,199 @@ def find_and_book_classes(page, target_date=None):
     skipped = []
     already_booked = []
 
-    # Log the page content for debugging
+    # The Mindbody classic schedule renders classes as a list/grid,
+    # not a traditional HTML table. Parse the full page text to find
+    # classes, then use links on the page to book them.
     body_text = page.inner_text("body")
-    log.info("Schedule page text (first 500 chars): {}".format(
-        body_text[:500].replace('\n', ' | ')))
+    log.info("Schedule page length: {} chars".format(len(body_text)))
 
-    # Mindbody classic schedule uses table rows for classes
-    # Each row typically has: time, class name, instructor, sign up button
-    # Try multiple approaches to find class rows
+    # Find all clickable links on the page — these contain sign-up links
+    all_links = page.query_selector_all("a")
+    log.info("Found {} links on page".format(len(all_links)))
 
-    # Approach 1: Look for table rows in the schedule
-    rows = page.query_selector_all(
-        "tr.classRow, tr[class*='class'], "
-        ".bw-session, .schedule-row, table.classSchedule tr")
+    # Parse schedule text to find matching classes
+    # Format from logs: "11:00 am PDT | UJAM and Stretch | SABRINA ..."
+    # Or: "(8 Reserved, 0 Open) | Zumba Club | INSTRUCTOR | ..."
+    lines = body_text.split('\n')
 
-    if not rows:
-        # Broader search
-        rows = page.query_selector_all("tr")
-        log.info("Using broad row search, found {} rows".format(len(rows)))
-
-    log.info("Found {} schedule rows".format(len(rows)))
-
-    for row in rows:
-        try:
-            row_text = row.inner_text()
-        except Exception:
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
             continue
 
-        if not row_text.strip():
-            continue
-
-        # Try to extract class info from the row
-        # Look for time pattern like "11:00 AM" or "2:30 PM"
+        # Look for time pattern
         time_match = re.search(
-            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', row_text)
+            r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', line, re.IGNORECASE)
         if not time_match:
             continue
 
-        time_str = time_match.group(1).strip()
+        time_str = time_match.group(1).strip().upper()
         try:
-            class_time = datetime.strptime(time_str, "%I:%M %p")
+            class_time = datetime.strptime(
+                time_str.replace(" AM", " AM").replace(" PM", " PM"),
+                "%I:%M %p")
             if class_time.hour < EARLIEST_HOUR:
                 continue
         except ValueError:
             continue
 
-        # Check if this row contains a target class
-        row_lower = row_text.lower()
-        matched = False
+        # Combine this line with nearby lines for context
+        context = " ".join(
+            lines[max(0, i-1):min(len(lines), i+3)]).lower()
+
+        # Check if any target class is in the context
+        matched_target = None
         for target in TARGET_CLASSES:
-            if target["name"] in row_lower:
+            if target["name"] in context:
                 if target.get("any_instructor"):
-                    matched = True
+                    matched_target = target
                     break
                 elif target.get("instructor"):
-                    if target["instructor"] in row_lower:
-                        matched = True
+                    if target["instructor"] in context:
+                        matched_target = target
                         break
-        if not matched:
+
+        if not matched_target:
             continue
 
-        # Extract class name for logging
-        class_name = row_text.split('\n')[0].strip()[:60]
-        log.info("Found matching class: {} at {}".format(
-            class_name, time_str))
+        class_desc = line.strip()[:80]
+        log.info("Found matching class: {} (matched: {})".format(
+            class_desc, matched_target["name"]))
 
         # Check if already booked
-        if any(x in row_lower for x in [
-                "cancel", "already", "booked", "enrolled",
-                "you're in", "waitlisted"]):
-            log.info("  Already booked/enrolled, skipping")
-            already_booked.append(class_name)
+        if any(x in context for x in [
+                "cancel my", "you're in", "enrolled"]):
+            log.info("  Already enrolled, skipping")
+            already_booked.append(class_desc)
             continue
 
-        # Look for sign-up / book button in this row
-        book_btn = None
-        for selector in [
-            "a[class*='sign'], a[class*='book']",
-            "input[value*='Sign'], input[value*='Book']",
-            "button:has-text('Sign'), button:has-text('Book')",
-            "a:has-text('Sign Up'), a:has-text('Book')",
-            ".SignupButton, .bookButton",
-        ]:
+        # Find the sign-up link for this class
+        # Look for links near this text that say "Sign Up" or "Book"
+        # or links that contain the class session ID
+        book_link = None
+
+        # Method 1: Find links with sign-up text
+        for link in all_links:
             try:
-                book_btn = row.query_selector(selector)
-                if book_btn:
-                    break
+                link_text = link.inner_text().strip().lower()
+                href = link.get_attribute("href") or ""
+
+                # Check if this is a sign-up/book link
+                if any(w in link_text for w in [
+                        "sign up", "book", "register", "enroll",
+                        "add to cart"]):
+                    # Check if it's near our class by looking at
+                    # surrounding text
+                    parent = link.evaluate(
+                        "el => el.closest('div, td, li, section')"
+                        " && el.closest('div, td, li, section')"
+                        ".innerText")
+                    if parent and matched_target["name"] in str(
+                            parent).lower():
+                        book_link = link
+                        break
+                # Also check for links with class IDs in the href
+                elif "AddClass" in href or "enroll" in href.lower():
+                    parent = link.evaluate(
+                        "el => el.closest('div, td, li, section')"
+                        " && el.closest('div, td, li, section')"
+                        ".innerText")
+                    if parent and matched_target["name"] in str(
+                            parent).lower():
+                        book_link = link
+                        break
             except Exception:
                 continue
 
-        if not book_btn:
-            # Try finding any clickable link in the row
-            links = row.query_selector_all("a")
-            for link in links:
+        if not book_link:
+            # Method 2: Try to find any sign-up link by checking
+            # all links that mention the class name
+            for link in all_links:
                 try:
-                    link_text = link.inner_text().lower()
-                    if any(w in link_text for w in [
-                            "sign", "book", "register", "enroll"]):
-                        book_btn = link
-                        break
+                    href = link.get_attribute("href") or ""
+                    if "AddClass" in href or "SignUp" in href:
+                        # Get parent text to match class
+                        parent_text = link.evaluate(
+                            "el => {"
+                            "  let p = el.parentElement;"
+                            "  for(let i=0; i<5 && p; i++) {"
+                            "    if(p.innerText.length > 20) "
+                            "      return p.innerText;"
+                            "    p = p.parentElement;"
+                            "  }"
+                            "  return '';"
+                            "}")
+                        if parent_text and matched_target["name"] in str(
+                                parent_text).lower():
+                            book_link = link
+                            log.info("  Found sign-up link via href")
+                            break
                 except Exception:
                     continue
 
-        if not book_btn:
-            log.info("  No booking button found, may not be open yet")
-            skipped.append(class_name)
+        if not book_link:
+            log.info("  No booking link found — registration may "
+                     "not be open yet")
+            skipped.append(class_desc)
             continue
 
-        # Click the book button
+        # Click the booking link
         try:
-            log.info("  Clicking book button...")
-            book_btn.click()
-            page.wait_for_timeout(3000)
-            page.wait_for_load_state("networkidle", timeout=15000)
+            log.info("  Clicking sign-up link...")
+            book_link.click()
+            page.wait_for_timeout(4000)
 
-            # Handle confirmation dialogs/pages
-            # Mindbody often has a confirmation step
-            confirm_btn = None
-            for sel in [
-                "input[value*='Confirm'], input[value*='Make']",
-                "button:has-text('Confirm'), button:has-text('Complete')",
-                "a:has-text('Confirm'), a:has-text('Complete')",
-                "#SubmitEnroll, #btnConfirm",
-            ]:
+            page.screenshot(path="debug/booking_{}.png".format(
+                target_date.strftime("%m%d")))
+
+            # Handle confirmation page
+            confirm_selectors = [
+                "input[value*='Make Single Payment']",
+                "input[value*='Confirm']",
+                "input[value*='Complete']",
+                "#SubmitEnroll",
+                "a:has-text('Confirm')",
+                "button:has-text('Confirm')",
+                "input[type='submit']",
+            ]
+
+            for sel in confirm_selectors:
                 try:
                     confirm_btn = page.query_selector(sel)
-                    if confirm_btn:
+                    if confirm_btn and confirm_btn.is_visible():
+                        log.info("  Confirming with: {}".format(sel))
+                        confirm_btn.click()
+                        page.wait_for_timeout(3000)
                         break
                 except Exception:
                     continue
 
-            if confirm_btn:
-                log.info("  Confirming booking...")
-                confirm_btn.click()
-                page.wait_for_timeout(3000)
-                page.wait_for_load_state("networkidle", timeout=15000)
-
-            # Check for success indicators
-            body_text = page.inner_text("body").lower()
-            if any(w in body_text for w in [
+            # Check result
+            result_text = page.inner_text("body").lower()
+            if any(w in result_text for w in [
                     "successfully", "confirmed", "you're booked",
-                    "you are enrolled", "added to your schedule"]):
+                    "you are enrolled", "thank you",
+                    "added to your schedule"]):
                 log.info("  ✅ Booked successfully!")
-                booked.append(class_name)
-            elif any(w in body_text for w in [
+                booked.append(class_desc)
+            elif any(w in result_text for w in [
                     "waitlist", "full", "no spots"]):
-                log.info("  ⚠️ Class is full, may be on waitlist")
-                booked.append("{} (waitlist)".format(class_name))
+                log.info("  ⚠️ Class full, may be waitlisted")
+                booked.append("{} (waitlist)".format(class_desc))
+            elif any(w in result_text for w in [
+                    "error", "failed", "unable"]):
+                log.warning("  ❌ Booking may have failed")
+                skipped.append(class_desc)
             else:
-                log.info("  Booking submitted (unconfirmed)")
-                booked.append(class_name)
+                log.info("  Booking submitted")
+                booked.append(class_desc)
 
-            # Navigate back to schedule for next class
+            # Navigate back
             navigate_to_schedule(page, target_date)
 
         except Exception as e:
             log.warning("  Failed to book: {}".format(e))
-            skipped.append(class_name)
-            # Navigate back to schedule
+            skipped.append(class_desc)
             try:
                 navigate_to_schedule(page, target_date)
             except Exception:

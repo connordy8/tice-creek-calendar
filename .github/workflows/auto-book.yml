@@ -35,8 +35,8 @@ jobs:
           MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
         run: python auto_book.py 7
 
-      - name: Upload debug screenshots (on failure)
-        if: failure()
+      - name: Upload debug screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: auto-book-debug
