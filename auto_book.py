@@ -255,9 +255,25 @@ def find_and_book_classes(page, target_date=None):
             continue
 
         # Find the Reserve/Sign Up button for this class.
-        # The schedule is a table where each class is a <tr> row.
-        # Reserve buttons are in the same row as the class name.
         book_link = None
+
+        # Debug: dump HTML structure of first reserve button (once)
+        if i < 3 and matched_target:
+            try:
+                first_reserve = page.query_selector(
+                    "input[value*='Reserve']")
+                if first_reserve:
+                    html = first_reserve.evaluate(
+                        "el => {"
+                        "  let tr = el.closest('tr');"
+                        "  return tr ? tr.outerHTML.substring(0, 500) "
+                        "    : 'no tr found: ' + el.parentElement"
+                        "      .outerHTML.substring(0, 500);"
+                        "}")
+                    log.info("  DEBUG reserve btn HTML: {}".format(
+                        html[:300]))
+            except Exception as e:
+                log.info("  DEBUG error: {}".format(e))
 
         # Method 1: Find all reserve/sign-up elements and match by row
         for link in all_links:
