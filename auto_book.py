@@ -493,32 +493,50 @@ def get_enrolled_classes(page):
             except ValueError:
                 continue
 
-            # Class name is on the next non-empty line
+            # Class name: check if it's on the same tab-separated line
+            # (waitlist format) or on the next line (schedule format)
             class_name = ""
-            for j in range(i + 1, min(i + 5, len(lines))):
-                candidate = lines[j].strip()
-                if not candidate:
-                    continue
-                # Skip very short lines (dots, icons, etc.)
-                if len(candidate) < 3:
-                    continue
-                # Skip lines that look like instructor/room info
-                if candidate.startswith("Cancel") or \
-                        "\tYes\t" in candidate or \
-                        "Cancel" == candidate:
-                    continue
-                # Skip lines with tab-separated fields
-                # (instructor row has tabs)
-                if "\t" in candidate and len(
-                        candidate.split("\t")) > 2:
-                    continue
-                # Skip timestamp-like lines
-                if re.match(
-                        r'\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}',
-                        candidate):
-                    continue
-                class_name = candidate
-                break
+
+            # Check for tab-separated format:
+            # "3/19/2026\t5:00 pm\tUJAM and Stretch\tInstructor\t..."
+            tabs = line.split("\t")
+            if len(tabs) >= 3:
+                # Tab-separated: field after time is the class name
+                # Find which tab field contains the time
+                for ti, field in enumerate(tabs):
+                    if re.search(
+                            r'\d{1,2}:\d{2}\s*[AaPp][Mm]',
+                            field, re.IGNORECASE):
+                        if ti + 1 < len(tabs):
+                            class_name = tabs[ti + 1].strip()
+                        break
+
+            # If not tab-separated, look on next lines
+            if not class_name or len(class_name) < 3:
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    candidate = lines[j].strip()
+                    if not candidate:
+                        continue
+                    # Skip very short lines (dots, icons, etc.)
+                    if len(candidate) < 3:
+                        continue
+                    # Skip lines that look like instructor/room info
+                    if candidate.startswith("Cancel") or \
+                            "\tYes\t" in candidate or \
+                            "Cancel" == candidate:
+                        continue
+                    # Skip lines with tab-separated fields
+                    # (instructor row has tabs)
+                    if "\t" in candidate and len(
+                            candidate.split("\t")) > 2:
+                        continue
+                    # Skip timestamp-like lines
+                    if re.match(
+                            r'\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}',
+                            candidate):
+                        continue
+                    class_name = candidate
+                    break
 
             if not class_name or len(class_name) < 3:
                 continue
