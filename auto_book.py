@@ -463,101 +463,132 @@ def get_enrolled_classes(page):
             schedule_text = page.inner_text("body")
             page.screenshot(path="debug/my_info_clicked.png")
 
-    # Parse the "My Schedule" page for enrolled classes.
-    # Format varies but typically includes lines like:
-    #   "Mar 19  WAITLIST #4"
-    #   "5:00 pm  UJAM and Stretch"
-    #   "(50 min)  with Tracy Perrilliat"
-    # Or combined lines with date, time, class name, instructor.
-    if schedule_text:
-        log.info("Parsing My Schedule page ({} chars)...".format(
-            len(schedule_text)))
-        # Log first 2000 chars for debugging
-        for chunk_line in schedule_text[:2000].split('\n'):
-            if chunk_line.strip():
-                log.info("  MYSCHED: {}".format(
-                    chunk_line.strip()[:150]))
-
-        lines = schedule_text.split('\n')
-        current_date = None
-        current_is_waitlist = False
-        current_year = datetime.now().year
+    def parse_schedule_section(text, is_waitlist_section=False):
+        """Parse a schedule section and return class entries."""
+        entries = []
+        lines = text.split('\n')
 
         for i, line in enumerate(lines):
             line = line.strip()
             if not line:
                 continue
 
-            # Look for date patterns: "Mar 19", "March 19", "Mar 19, 2026"
-            date_match = re.search(
-                r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
-                r'(?:uary|ruary|ch|il|e|y|ust|tember|ober|ember)?'
-                r'\s+(\d{1,2})(?:\s*,?\s*(\d{4}))?',
+            # Look for date + time pattern:
+            # "Thu 3/19/2026	5:55 pm PDT"
+            # or "3/19/2026  5:55 pm"
+            date_time_match = re.search(
+                r'(\d{1,2}/\d{1,2}/\d{4})\s+'
+                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
                 line, re.IGNORECASE)
-            if date_match:
-                month_str = date_match.group(1)
-                day_num = int(date_match.group(2))
-                year = int(date_match.group(3)) if date_match.group(
-                    3) else current_year
-                try:
-                    parsed_date = datetime.strptime(
-                        "{} {} {}".format(month_str, day_num, year),
-                        "%b %d %Y")
-                    current_date = parsed_date.strftime("%Y-%m-%d")
-                except ValueError:
-                    pass
-
-            # Check for waitlist indicator
-            if "waitlist" in line.lower():
-                current_is_waitlist = True
+            if not date_time_match:
                 continue
 
-            # Look for time + class name
-            time_match = re.search(
-                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', line,
-                re.IGNORECASE)
-            if time_match and current_date:
-                time_str = time_match.group(1).strip()
+            date_str = date_time_match.group(1)
+            time_str = date_time_match.group(2).strip()
 
-                # The class name might be on this line or the next
-                # Remove the time part to get remaining text
-                remaining = line[time_match.end():].strip()
-                # Also check next line for class name
-                next_line = ""
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
+            try:
+                parsed_date = datetime.strptime(
+                    date_str, "%m/%d/%Y")
+                date_iso = parsed_date.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
 
-                class_name = remaining if len(remaining) > 3 else next_line
+            # Class name is on the next non-empty line
+            class_name = ""
+            for j in range(i + 1, min(i + 4, len(lines))):
+                candidate = lines[j].strip()
+                if not candidate:
+                    continue
+                # Skip lines that look like instructor/room info
+                if candidate.startswith("Cancel") or \
+                        "\tYes\t" in candidate or \
+                        "Cancel" == candidate:
+                    continue
+                # Skip lines with tab-separated fields
+                # (instructor row has tabs)
+                if "\t" in candidate and len(
+                        candidate.split("\t")) > 2:
+                    continue
+                class_name = candidate
+                break
 
-                # Clean up class name — remove duration, instructor prefix
-                class_name = re.sub(
-                    r'\(\d+ min\)', '', class_name).strip()
-                class_name = re.sub(
-                    r'^with\s+', '', class_name).strip()
+            if not class_name or len(class_name) < 3:
+                continue
 
-                if class_name and len(class_name) > 2:
-                    dedup_key = (
-                        current_date, time_str.upper(),
-                        class_name.lower()[:20])
-                    if dedup_key not in seen:
-                        seen.add(dedup_key)
-                        enrolled.append({
-                            "name": class_name,
-                            "date": current_date,
-                            "time": time_str,
-                            "is_waitlist": current_is_waitlist,
-                            "is_club": False,
-                            "raw": line[:200],
-                            "keywords": [],
-                        })
-                        status = "WAITLISTED" if current_is_waitlist \
-                            else "ENROLLED"
-                        log.info("  {} ({}) {} @ {}".format(
-                            current_date, status,
-                            class_name[:60], time_str))
+            entries.append({
+                "name": class_name,
+                "date": date_iso,
+                "time": time_str,
+                "is_waitlist": is_waitlist_section,
+                "is_club": False,
+                "raw": line[:200],
+                "keywords": [],
+            })
 
-                # Reset waitlist flag after consuming
-                current_is_waitlist = False
+        return entries
+
+    # Parse the "My Schedule" page for enrolled classes.
+    if schedule_text:
+        log.info("Parsing My Schedule page ({} chars)...".format(
+            len(schedule_text)))
+        for chunk_line in schedule_text[:3000].split('\n'):
+            if chunk_line.strip():
+                log.info("  MYSCHED: {}".format(
+                    chunk_line.strip()[:150]))
+
+        # Parse the main "My Schedule" section (confirmed classes)
+        confirmed = parse_schedule_section(
+            schedule_text, is_waitlist_section=False)
+        for cls in confirmed:
+            dedup_key = (
+                cls["date"], cls["time"].upper(),
+                cls["name"].lower()[:20])
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                enrolled.append(cls)
+                log.info("  {} (ENROLLED) {} @ {}".format(
+                    cls["date"], cls["name"][:60], cls["time"]))
+
+        log.info("Found {} confirmed classes from My Schedule".format(
+            len(confirmed)))
+
+    # Now click the "Waitlist" tab to get waitlisted classes
+    log.info("Checking Waitlist tab...")
+    # Navigate back to my_sch.asp
+    page.goto(my_schedule_urls[0], timeout=30000)
+    page.wait_for_timeout(2000)
+
+    waitlist_link = page.query_selector(
+        "a:has-text('Waitlist'), a:has-text('waitlist')")
+    if waitlist_link:
+        wl_text = waitlist_link.inner_text().strip()
+        log.info("Found Waitlist tab: '{}'".format(wl_text))
+        waitlist_link.click()
+        page.wait_for_timeout(3000)
+        page.screenshot(path="debug/my_waitlist.png")
+
+        wl_body = page.inner_text("body")
+        log.info("Waitlist page ({} chars):".format(len(wl_body)))
+        for chunk_line in wl_body[:2000].split('\n'):
+            if chunk_line.strip():
+                log.info("  WAITLIST: {}".format(
+                    chunk_line.strip()[:150]))
+
+        wl_entries = parse_schedule_section(
+            wl_body, is_waitlist_section=True)
+        for cls in wl_entries:
+            dedup_key = (
+                cls["date"], cls["time"].upper(),
+                cls["name"].lower()[:20])
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                enrolled.append(cls)
+                log.info("  {} (WAITLISTED) {} @ {}".format(
+                    cls["date"], cls["name"][:60], cls["time"]))
+
+        log.info("Found {} waitlisted classes".format(len(wl_entries)))
+    else:
+        log.info("No Waitlist tab found")
 
     log.info("Found {} classes from My Schedule page".format(len(enrolled)))
 
