@@ -495,9 +495,12 @@ def get_enrolled_classes(page):
 
             # Class name is on the next non-empty line
             class_name = ""
-            for j in range(i + 1, min(i + 4, len(lines))):
+            for j in range(i + 1, min(i + 5, len(lines))):
                 candidate = lines[j].strip()
                 if not candidate:
+                    continue
+                # Skip very short lines (dots, icons, etc.)
+                if len(candidate) < 3:
                     continue
                 # Skip lines that look like instructor/room info
                 if candidate.startswith("Cancel") or \
@@ -508,6 +511,11 @@ def get_enrolled_classes(page):
                 # (instructor row has tabs)
                 if "\t" in candidate and len(
                         candidate.split("\t")) > 2:
+                    continue
+                # Skip timestamp-like lines
+                if re.match(
+                        r'\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}',
+                        candidate):
                     continue
                 class_name = candidate
                 break
