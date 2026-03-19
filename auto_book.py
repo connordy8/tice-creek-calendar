@@ -44,6 +44,8 @@ TARGET_CLASSES = [
     {"keywords": ["posture", "balance"], "any_instructor": True},
     {"keywords": ["mat", "yoga"], "any_instructor": True},
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
+    {"keywords": ["let's", "stretch"], "any_instructor": True},
+    {"keywords": ["lets", "stretch"], "any_instructor": True},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
@@ -407,76 +409,162 @@ def find_and_book_classes(page, target_date=None):
 
 
 def get_enrolled_classes(page):
-    """Check Beth's actual enrolled classes on Mindbody.
+    """Check Beth's actual enrolled/waitlisted classes on Mindbody.
 
-    Navigates to "My Schedule" and scrapes the enrolled class list.
-    Returns a list of dicts: {name, date, time, instructor, location}.
+    Uses TWO sources:
+    1. Beth's "My Schedule" page — shows ALL classes she's signed up
+       for (confirmed + waitlisted), regardless of target list.
+    2. Daily schedule pages — detects club/drop-in classes matching
+       her target list (no enrollment needed).
+
+    Returns a list of dicts for calendar sync.
     """
     enrolled = []
+    seen = set()  # Dedup key: (date, time, name_lower)
 
     log.info("Checking Beth's enrolled classes...")
 
-    # Try multiple approaches to find Beth's schedule
-
-    # Approach 1: Look for "My Info" or "My Classes" link on current page
-    page.goto(SCHEDULE_URL, timeout=30000)
-    page.wait_for_timeout(2000)
-
-    # Find links to my schedule / my classes
-    links = page.evaluate("""() => {
-        const results = [];
-        document.querySelectorAll('a').forEach(a => {
-            const text = (a.innerText || '').toLowerCase();
-            const href = a.href || '';
-            if (text.includes('my info') || text.includes('my class')
-                || text.includes('my schedule') || text.includes('my account')
-                || href.includes('myinfo') || href.includes('myclass')
-                || href.includes('mySch') || href.includes('su1.asp')
-            ) {
-                results.push({text: a.innerText.trim(), href: href});
-            }
-        });
-        return results;
-    }""")
-    log.info("Found {} 'My' links: {}".format(len(links), links))
-
-    # Try clicking "My Info" if found
-    my_info_link = page.query_selector(
-        "a:has-text('My Info'), a:has-text('My Account'), "
-        "a:has-text('My Classes')")
-    if my_info_link:
-        log.info("Clicking My Info link...")
-        my_info_link.click()
-        page.wait_for_timeout(3000)
-        page.screenshot(path="debug/my_info.png")
-
-    # Approach 2: Try the direct "My Schedule" URLs
-    schedule_urls = [
-        ("https://clients.mindbodyonline.com/classic/ws?studioid={}"
-         "&stype=-7&sView=week&sLoc=0&sTG=22").format(STUDIO_ID),
+    # ── Source 1: Beth's "My Schedule" page ──
+    # Navigate to the account/profile page and find the Schedule tab.
+    # This shows confirmed + waitlisted classes.
+    my_schedule_urls = [
         ("https://clients.mindbodyonline.com/ASP/my_sch.asp"
          "?studioid={}").format(STUDIO_ID),
         ("https://clients.mindbodyonline.com/classic/myinfo"
          "?studioid={}").format(STUDIO_ID),
     ]
 
-    best_body = ""
-    for url in schedule_urls:
+    schedule_text = ""
+    for url in my_schedule_urls:
         page.goto(url, timeout=30000)
-        page.wait_for_timeout(2000)
-        body_text = page.inner_text("body")
-        log.info("Tried {}: {} chars".format(
-            url.split("?")[0].split("/")[-1], len(body_text)))
-        if len(body_text) > len(best_body):
-            best_body = body_text
+        page.wait_for_timeout(3000)
+        body = page.inner_text("body")
         page.screenshot(path="debug/my_sched_{}.png".format(
-            url.split("/")[-1][:20].replace("?", "_")))
+            url.split("/")[-1].split("?")[0][:15]))
+        log.info("My Schedule page ({}) — {} chars".format(
+            url.split("/")[-1].split("?")[0], len(body)))
 
-    # Approach 3: Check each day's schedule for "enrolled" / "Cancel"
-    # indicators on Beth's target classes.
-    # When logged in, if Beth is enrolled in a class, the schedule shows
-    # "Cancel My Res" instead of "Reserve Now".
-    log.info("Checking daily schedules for enrollment status...")
+        # If the page has class-like content, use it
+        if len(body) > len(schedule_text):
+            schedule_text = body
+
+    # Also try clicking "My Info" from the schedule page
+    if not schedule_text or len(schedule_text) < 200:
+        page.goto(SCHEDULE_URL, timeout=30000)
+        page.wait_for_timeout(2000)
+        my_link = page.query_selector(
+            "a:has-text('My Info'), a:has-text('My Schedule'), "
+            "a:has-text('My Account')")
+        if my_link:
+            log.info("Clicking '{}' link...".format(
+                my_link.inner_text().strip()))
+            my_link.click()
+            page.wait_for_timeout(3000)
+            schedule_text = page.inner_text("body")
+            page.screenshot(path="debug/my_info_clicked.png")
+
+    # Parse the "My Schedule" page for enrolled classes.
+    # Format varies but typically includes lines like:
+    #   "Mar 19  WAITLIST #4"
+    #   "5:00 pm  UJAM and Stretch"
+    #   "(50 min)  with Tracy Perrilliat"
+    # Or combined lines with date, time, class name, instructor.
+    if schedule_text:
+        log.info("Parsing My Schedule page ({} chars)...".format(
+            len(schedule_text)))
+        # Log first 2000 chars for debugging
+        for chunk_line in schedule_text[:2000].split('\n'):
+            if chunk_line.strip():
+                log.info("  MYSCHED: {}".format(
+                    chunk_line.strip()[:150]))
+
+        lines = schedule_text.split('\n')
+        current_date = None
+        current_is_waitlist = False
+        current_year = datetime.now().year
+
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Look for date patterns: "Mar 19", "March 19", "Mar 19, 2026"
+            date_match = re.search(
+                r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+                r'(?:uary|ruary|ch|il|e|y|ust|tember|ober|ember)?'
+                r'\s+(\d{1,2})(?:\s*,?\s*(\d{4}))?',
+                line, re.IGNORECASE)
+            if date_match:
+                month_str = date_match.group(1)
+                day_num = int(date_match.group(2))
+                year = int(date_match.group(3)) if date_match.group(
+                    3) else current_year
+                try:
+                    parsed_date = datetime.strptime(
+                        "{} {} {}".format(month_str, day_num, year),
+                        "%b %d %Y")
+                    current_date = parsed_date.strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+
+            # Check for waitlist indicator
+            if "waitlist" in line.lower():
+                current_is_waitlist = True
+                continue
+
+            # Look for time + class name
+            time_match = re.search(
+                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])', line,
+                re.IGNORECASE)
+            if time_match and current_date:
+                time_str = time_match.group(1).strip()
+
+                # The class name might be on this line or the next
+                # Remove the time part to get remaining text
+                remaining = line[time_match.end():].strip()
+                # Also check next line for class name
+                next_line = ""
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+
+                class_name = remaining if len(remaining) > 3 else next_line
+
+                # Clean up class name — remove duration, instructor prefix
+                class_name = re.sub(
+                    r'\(\d+ min\)', '', class_name).strip()
+                class_name = re.sub(
+                    r'^with\s+', '', class_name).strip()
+
+                if class_name and len(class_name) > 2:
+                    dedup_key = (
+                        current_date, time_str.upper(),
+                        class_name.lower()[:20])
+                    if dedup_key not in seen:
+                        seen.add(dedup_key)
+                        enrolled.append({
+                            "name": class_name,
+                            "date": current_date,
+                            "time": time_str,
+                            "is_waitlist": current_is_waitlist,
+                            "is_club": False,
+                            "raw": line[:200],
+                            "keywords": [],
+                        })
+                        status = "WAITLISTED" if current_is_waitlist \
+                            else "ENROLLED"
+                        log.info("  {} ({}) {} @ {}".format(
+                            current_date, status,
+                            class_name[:60], time_str))
+
+                # Reset waitlist flag after consuming
+                current_is_waitlist = False
+
+    log.info("Found {} classes from My Schedule page".format(len(enrolled)))
+
+    # ── Source 2: Daily schedule pages — club/drop-in classes ──
+    # Club classes don't require enrollment, so they won't appear on
+    # "My Schedule". Check the daily schedule for target club classes.
+    log.info("Checking daily schedules for club/drop-in classes...")
     today = datetime.now()
     for day_offset in range(14):
         target = today + timedelta(days=day_offset)
@@ -489,9 +577,6 @@ def get_enrolled_classes(page):
         page.goto(url, timeout=30000)
         page.wait_for_timeout(2000)
 
-        # Find all class rows. Check which ones Beth is enrolled in.
-        # When enrolled, the button says "Cancel My Reservation"
-        # instead of "Reserve Now".
         all_rows = page.evaluate("""() => {
             const results = [];
             const rows = document.querySelectorAll('.oddRow, .evenRow');
@@ -504,20 +589,23 @@ def get_enrolled_classes(page):
             return results;
         }""")
 
-        # Log target-matching rows and determine enrollment status
         for row_text in all_rows:
+            lower = row_text.lower()
+
+            # Only looking for club classes here
+            if "club class" not in lower and "club:" not in lower:
+                continue
+
             m = class_matches(row_text)
             if not m:
                 continue
 
-            lower = row_text.lower()
-
-            # Check earliest hour
             time_match = re.search(
                 r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
                 row_text, re.IGNORECASE)
             if not time_match:
                 continue
+
             time_str = time_match.group(1).strip()
             try:
                 class_time = datetime.strptime(
@@ -529,49 +617,25 @@ def get_enrolled_classes(page):
             except ValueError:
                 continue
 
-            is_enrolled = (
-                "registered!" in lower
-                or "cancel my" in lower
-                or "you're in" in lower
-                or "you are enrolled" in lower
-            )
-            is_waitlist = (
-                "on waitlist" in lower
-                or "waitlisted" in lower
-            )
-            is_club = "club class" in lower or "club:" in lower
-
-            if is_enrolled:
-                status = "ENROLLED"
-            elif is_waitlist:
-                status = "WAITLISTED"
-            elif is_club:
-                status = "CLUB (open)"
-            else:
-                status = "not enrolled"
-
-            log.info("  {} ({}): {}".format(
-                target.strftime("%a %m/%d"), status,
-                row_text[:120].replace('\n', ' | ')))
-
             date_iso = target.strftime("%Y-%m-%d")
+            name = " ".join(m["keywords"]).title()
+            dedup_key = (date_iso, time_str.upper(), name.lower()[:20])
 
-            # Add to enrolled list if:
-            # - Confirmed (Registered!)
-            # - Waitlisted
-            # - Club class (no reservation needed — Beth can walk in)
-            if is_enrolled or is_waitlist or is_club:
+            if dedup_key not in seen:
+                seen.add(dedup_key)
                 enrolled.append({
-                    "name": " ".join(m["keywords"]).title(),
+                    "name": name,
                     "date": date_iso,
                     "time": time_str,
-                    "is_waitlist": is_waitlist,
-                    "is_club": is_club,
+                    "is_waitlist": False,
+                    "is_club": True,
                     "raw": row_text[:200],
                     "keywords": m["keywords"],
                 })
+                log.info("  {} (CLUB) {} @ {}".format(
+                    date_iso, name, time_str))
 
-    log.info("Found {} enrolled target classes".format(len(enrolled)))
+    log.info("Total enrolled/club classes: {}".format(len(enrolled)))
     return enrolled
 
 
