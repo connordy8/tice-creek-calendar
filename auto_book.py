@@ -46,6 +46,7 @@ TARGET_CLASSES = [
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
     {"keywords": ["let's", "stretch"], "any_instructor": True},
     {"keywords": ["lets", "stretch"], "any_instructor": True},
+    {"keywords": ["stretch", "roll"], "any_instructor": True},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
@@ -318,6 +319,27 @@ def find_and_book_classes(page, target_date=None):
             page.screenshot(path="debug/booking_{}_{}.png".format(
                 target_date.strftime("%m%d"), entry["idx"]))
 
+            # Log what we see after clicking Reserve
+            post_click_text = page.inner_text("body")[:500].lower()
+            log.info("  After click: {}".format(
+                post_click_text[:200].replace('\n', ' | ')))
+
+            # Find all clickable buttons/inputs on the page
+            visible_buttons = page.evaluate("""() => {
+                const btns = [];
+                document.querySelectorAll(
+                    'input[type="submit"], button, a'
+                ).forEach(el => {
+                    const text = (el.value || el.innerText || '').trim();
+                    if (text && text.length > 1 && text.length < 50
+                        && el.offsetParent !== null) {
+                        btns.push(text.substring(0, 60));
+                    }
+                });
+                return btns.slice(0, 10);
+            }""")
+            log.info("  Visible buttons: {}".format(visible_buttons))
+
             # Handle confirmation or waitlist page
             # Mindbody may show a "Join Waitlist" button if class is full
             confirm_selectors = [
@@ -325,6 +347,9 @@ def find_and_book_classes(page, target_date=None):
                 "a:has-text('Join Waitlist')",
                 "button:has-text('Join Waitlist')",
                 "input[value*='Add to Waitlist']",
+                "a:has-text('Add to Waitlist')",
+                "input[value*='Waitlist']",
+                "a:has-text('Waitlist')",
                 "input[value*='Make Single Payment']",
                 "input[value*='Confirm']",
                 "input[value*='Complete']",
@@ -334,6 +359,7 @@ def find_and_book_classes(page, target_date=None):
                 "input[type='submit']",
             ]
 
+            clicked_confirm = False
             for sel in confirm_selectors:
                 try:
                     confirm_btn = page.query_selector(sel)
@@ -341,9 +367,17 @@ def find_and_book_classes(page, target_date=None):
                         log.info("  Confirming with: {}".format(sel))
                         confirm_btn.click()
                         page.wait_for_timeout(3000)
+                        clicked_confirm = True
+                        page.screenshot(
+                            path="debug/confirmed_{}_{}.png".format(
+                                target_date.strftime("%m%d"),
+                                entry["idx"]))
                         break
                 except Exception:
                     continue
+
+            if not clicked_confirm:
+                log.info("  No confirm button found/clicked")
 
             # Check result
             result_text = page.inner_text("body").lower()
