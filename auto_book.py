@@ -837,11 +837,13 @@ def sync_enrolled_to_gcal(enrolled_classes):
 
     log.info("Desired booked events: {}".format(len(desired)))
 
-    # Find existing auto-booked events on calendar
+    # Find existing auto-booked events on calendar.
+    # Use a wide window to catch all events, including ones that may
+    # have shifted dates due to rescheduling.
     time_min = (
-        datetime.utcnow() - timedelta(days=1)).isoformat() + "Z"
+        datetime.utcnow() - timedelta(days=3)).isoformat() + "Z"
     time_max = (
-        datetime.utcnow() + timedelta(days=21)).isoformat() + "Z"
+        datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
 
     existing = {}
     all_calendar_items = []
@@ -853,6 +855,8 @@ def sync_enrolled_to_gcal(enrolled_classes):
             timeMax=time_max,
             maxResults=500,
             singleEvents=True,
+            showDeleted=True,  # Include cancelled events so we can
+                               # resurrect them if needed
             pageToken=page_token,
         ).execute()
 
@@ -882,6 +886,10 @@ def sync_enrolled_to_gcal(enrolled_classes):
     for item in all_calendar_items:
         eid = item.get("id", "")
         summary = (item.get("summary") or "").lower()
+
+        # Skip cancelled/deleted events
+        if item.get("status") == "cancelled":
+            continue
 
         # Skip our own auto-booked events
         if eid.startswith(BOOKED_EVENT_PREFIX):
@@ -917,18 +925,27 @@ def sync_enrolled_to_gcal(enrolled_classes):
     for eid, body in desired.items():
         if eid in existing:
             old = existing[eid]
+            is_cancelled = old.get("status") == "cancelled"
             needs_update = (
-                old.get("summary") != body["summary"]
+                is_cancelled
+                or old.get("summary") != body["summary"]
                 or old.get("start", {}).get("dateTime") !=
                 body["start"]["dateTime"]
+                or old.get("colorId") != body.get("colorId")
             )
             if needs_update:
+                # Always set status to confirmed — this resurrects
+                # cancelled/deleted events.
+                body["status"] = "confirmed"
                 service.events().update(
                     calendarId=calendar_id,
                     eventId=eid,
                     body=body,
                 ).execute()
                 updated += 1
+                if is_cancelled:
+                    log.info("  Resurrected deleted event: {}".format(
+                        body.get("summary", "")))
         else:
             body["id"] = eid
             try:
@@ -938,12 +955,32 @@ def sync_enrolled_to_gcal(enrolled_classes):
                 ).execute()
                 created += 1
             except Exception as e:
-                log.warning("Failed to create event: {}".format(e))
+                if "409" in str(e) or "duplicate" in str(e).lower():
+                    # Event ID exists (deleted event retains its ID).
+                    # Fall back to update to resurrect it.
+                    log.info("Event {} exists (deleted?), updating instead"
+                             .format(eid[:16]))
+                    try:
+                        del body["id"]
+                        service.events().update(
+                            calendarId=calendar_id,
+                            eventId=eid,
+                            body=body,
+                        ).execute()
+                        updated += 1
+                    except Exception as e2:
+                        log.warning("Failed to update event {}: {}".format(
+                            eid[:16], e2))
+                else:
+                    log.warning("Failed to create event: {}".format(e))
 
     # Delete events for classes she's no longer enrolled in
     deleted = 0
     for eid in existing:
         if eid not in desired:
+            # Skip already-cancelled events
+            if existing[eid].get("status") == "cancelled":
+                continue
             try:
                 service.events().delete(
                     calendarId=calendar_id,
