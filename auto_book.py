@@ -46,7 +46,8 @@ TARGET_CLASSES = [
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
     {"keywords": ["let's", "stretch"], "any_instructor": True},
     {"keywords": ["lets", "stretch"], "any_instructor": True},
-    {"keywords": ["stretch", "roll"], "any_instructor": True},
+    {"keywords": ["stretch", "roll"], "any_instructor": True,
+     "earliest_hour": 8},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
