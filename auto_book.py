@@ -4,8 +4,9 @@ Logs into Mindbody, finds upcoming classes that match Beth's preferences,
 and books them automatically when registration is open. Then checks
 Beth's actual enrolled schedule and syncs it to Google Calendar.
 
-Target classes: Zumba (10 AM+), UJAM, Aquacise (Bob only), Posture
-Balance Core & Strength, Mat Yoga — all at 11 AM or later unless noted.
+Target classes: Zumba (10 AM+), UJAM, Aquacise (Bob only), ForeverFit
+(Bob only), Posture Balance Core & Strength, Mat Yoga — all at 11 AM
+or later unless noted.
 """
 
 import hashlib
@@ -46,6 +47,8 @@ TARGET_CLASSES = [
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
     {"keywords": ["let's", "stretch"], "any_instructor": True},
     {"keywords": ["lets", "stretch"], "any_instructor": True},
+    {"keywords": ["foreverfit"], "instructor": "bob"},
+    {"keywords": ["forever", "fit"], "instructor": "bob"},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
