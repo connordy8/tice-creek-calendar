@@ -275,11 +275,31 @@ def sync_to_google_calendar(classes, movies, concerts, config):
                 updated += 1
         else:
             body["id"] = eid
-            service.events().insert(
-                calendarId=calendar_id,
-                body=body,
-            ).execute()
-            created += 1
+            try:
+                service.events().insert(
+                    calendarId=calendar_id,
+                    body=body,
+                ).execute()
+                created += 1
+            except Exception as e:
+                if "409" in str(e) or "duplicate" in str(e).lower():
+                    # Event already exists but wasn't in our query window;
+                    # update it instead.
+                    log.info("Event {} already exists, updating".format(eid))
+                    try:
+                        del body["id"]
+                        service.events().update(
+                            calendarId=calendar_id,
+                            eventId=eid,
+                            body=body,
+                        ).execute()
+                        updated += 1
+                    except Exception as e2:
+                        log.warning("Failed to update event {}: {}".format(
+                            eid, e2))
+                else:
+                    log.warning("Failed to create event {}: {}".format(
+                        eid, e))
 
     # --- Delete events we no longer want ---
     deleted = 0
