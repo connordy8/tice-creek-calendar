@@ -1,0 +1,36 @@
+name: Phone Reminder
+
+on:
+  # Run every 5 minutes to catch the 15-minute reminder window
+  schedule:
+    - cron: "*/5 * * * *"
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install twilio google-auth google-api-python-client
+
+      - name: Check and call
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+          BETH_PHONE_NUMBER: ${{ secrets.BETH_PHONE_NUMBER }}
+        run: python phone_reminder.py
