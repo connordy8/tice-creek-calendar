@@ -1,0 +1,71 @@
+name: Lucy — Call Beth
+
+on:
+  # Morning check-in: 9 AM PT = 4 PM UTC (5 PM UTC during standard time)
+  # Pre-class reminders handled by the phone-reminder workflow
+  schedule:
+    - cron: "0 17 * * *"   # 9 AM PT (PST)
+
+  # Allow manual trigger with call type selection
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Command to run"
+        required: true
+        default: "call"
+        type: choice
+        options:
+          - call
+          - test
+          - post-process
+          - update
+
+jobs:
+  lucy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests google-auth google-api-python-client
+
+      - name: Run Lucy
+        env:
+          VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          BETH_PHONE_NUMBER: ${{ secrets.BETH_PHONE_NUMBER }}
+        working-directory: lucy
+        run: python lucy_call.py ${{ github.event.inputs.command || 'call' }}
+
+      - name: Post-process (save memories)
+        if: always()
+        env:
+          VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        working-directory: lucy
+        run: |
+          sleep 10
+          python lucy_call.py post-process
+
+      - name: Commit new memories
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lucy/memory/
+          if git diff --cached --quiet; then
+            echo "No new memories"
+          else
+            git commit -m "Lucy memory update [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git push
+          fi
