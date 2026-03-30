@@ -11,5 +11,18 @@
     "notes": "One-time schedule change due to special event at fitness center. Katy teaching. Carol hopes to return by this date.",
     "source": "Forwarded from Carol Lehr",
     "created": "2026-03-16 23:10"
+  },
+  {
+    "uid": "a1e0bb958783dd6c",
+    "type": "modify",
+    "original_class": "zumba club",
+    "title": "Zumba Club",
+    "date": "2026-04-03",
+    "start_time": "10:45",
+    "end_time": null,
+    "location": "Tice Creek Fitness Center",
+    "notes": "One-time schedule change due to special class in aerobics room at normal time. Informal lunch at The Hangout after class.",
+    "source": "Carol Lehr schedule change notification",
+    "created": "2026-03-30 22:27"
   }
 ]
