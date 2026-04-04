@@ -230,19 +230,101 @@ def save_memory(call_data):
 
 # ── Call Management ─────────────────────────────────────────────
 
-def update_assistant_prompt():
+def update_assistant_prompt(evening=False):
     """Update Lucy's system prompt with fresh calendar + memory context."""
     template = PROMPT_TEMPLATE.read_text()
 
     calendar_ctx = get_todays_calendar()
     memory_ctx = load_recent_memories()
+    current_time = datetime.now(PACIFIC).strftime(
+        "%A, %B %-d, %Y at %-I:%M %p PT")
 
-    prompt = template.replace("{calendar_context}", calendar_ctx)
+    prompt = template.replace("{current_time}", current_time)
+    prompt = prompt.replace("{calendar_context}", calendar_ctx)
     prompt = prompt.replace("{memory_context}", memory_ctx)
 
-    log.info("Updating Lucy's prompt with today's context...")
+    if evening:
+        first_message = (
+            "Hi Beth! It's Lucy. Just calling to say goodnight!"
+        )
+        # Add evening-specific instructions to the prompt
+        prompt += (
+            "\n\n## TONIGHT'S CALL — EVENING WIND-DOWN\n"
+            "This is the 11:30 PM bedtime call. Your priorities:\n"
+            "1. PRIMARY: Gently encourage Beth to head to bed and "
+            "use her CPAP machine tonight. Be warm about it — "
+            "\"Have you got your CPAP all set up?\" or "
+            "\"Make sure you use that CPAP tonight, okay?\"\n"
+            "2. SECONDARY: Ask if she'd like to hear what's on her "
+            "calendar tomorrow, or if there's anything she wants "
+            "to be reminded of in the morning.\n"
+            "3. Keep this call SHORT and gentle — she should be "
+            "going to sleep soon. 2-3 minutes max.\n"
+            "4. End warmly: wish her sweet dreams and let her know "
+            "you'll call in the morning.\n"
+        )
+    else:
+        first_message = (
+            "Hi Beth! It's Lucy. How are you doing today?"
+        )
+
+    log.info("Updating Lucy's prompt ({})...".format(
+        "evening" if evening else "morning"))
     log.info("  Calendar: {}".format(calendar_ctx[:200]))
     log.info("  Memory: {}".format(memory_ctx[:200]))
+
+    # Build tools list
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "getCalendarEvents",
+                "description": "Look up calendar events for a date range.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "start_date": {
+                            "type": "string",
+                            "description": "YYYY-MM-DD, defaults to today.",
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "YYYY-MM-DD, defaults to +3 days.",
+                        },
+                    },
+                },
+            },
+            "server": {
+                "url": "https://tice-creek-calendar.vercel.app/api/vapi_tools"
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "saveReminderPreferences",
+                "description": "Save reminder preferences for events.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "remind_all": {"type": "boolean"},
+                        "preferences": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "event_name": {"type": "string"},
+                                    "wants_reminder": {"type": "boolean"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "server": {
+                "url": "https://tice-creek-calendar.vercel.app/api/vapi_tools"
+            },
+        },
+    ]
 
     resp = requests.patch(
         "{}/assistant/{}".format(VAPI_API, ASSISTANT_ID),
@@ -250,9 +332,11 @@ def update_assistant_prompt():
         json={
             "model": {
                 "provider": "openai",
-                "model": "gpt-realtime-2025-08-28",
+                "model": "gpt-4o-mini",
                 "messages": [{"role": "system", "content": prompt}],
-            }
+                "tools": tools,
+            },
+            "firstMessage": first_message,
         },
     )
 
@@ -436,11 +520,17 @@ def main():
     command = sys.argv[1]
 
     if command == "call":
-        # Full flow: update prompt, then call Beth
-        # Try home phone first, fall back to cell
+        # Morning call: update prompt, then call Beth
         beth_home = os.environ.get("BETH_PHONE_NUMBER", "+19252781199")
         beth_cell = os.environ.get("BETH_CELL_NUMBER", "+14403211704")
         update_assistant_prompt()
+        make_call_with_fallback(beth_home, beth_cell)
+
+    elif command == "call-evening":
+        # Evening wind-down call
+        beth_home = os.environ.get("BETH_PHONE_NUMBER", "+19252781199")
+        beth_cell = os.environ.get("BETH_CELL_NUMBER", "+14403211704")
+        update_assistant_prompt(evening=True)
         make_call_with_fallback(beth_home, beth_cell)
 
     elif command == "test":

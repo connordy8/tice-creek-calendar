@@ -1,10 +1,11 @@
 name: Lucy — Call Beth
 
 on:
-  # Morning check-in: 9 AM PT = 4 PM UTC (5 PM UTC during standard time)
-  # Pre-class reminders handled by the phone-reminder workflow
+  # Morning check-in: 10 AM PT = 5 PM UTC (6 PM UTC during standard time)
+  # Evening wind-down: 11:30 PM PT = 6:30 AM+1 UTC (7:30 AM+1 during standard time)
   schedule:
-    - cron: "0 17 * * *"   # 9 AM PT (PST)
+    - cron: "0 17 * * *"    # 10 AM PT (PDT)
+    - cron: "30 6 * * *"    # 11:30 PM PT (PDT) — runs next day UTC
 
   # Allow manual trigger with call type selection
   workflow_dispatch:
@@ -16,6 +17,7 @@ on:
         type: choice
         options:
           - call
+          - call-evening
           - test
           - post-process
           - update
@@ -23,7 +25,7 @@ on:
 jobs:
   lucy:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -37,6 +39,21 @@ jobs:
       - name: Install dependencies
         run: pip install requests google-auth google-api-python-client
 
+      - name: Determine call type
+        id: calltype
+        run: |
+          if [ -n "${{ github.event.inputs.command }}" ]; then
+            echo "cmd=${{ github.event.inputs.command }}" >> $GITHUB_OUTPUT
+          else
+            # Check current hour in PT to decide morning vs evening
+            HOUR=$(TZ=America/Los_Angeles date +%H)
+            if [ "$HOUR" -ge 20 ] || [ "$HOUR" -lt 6 ]; then
+              echo "cmd=call-evening" >> $GITHUB_OUTPUT
+            else
+              echo "cmd=call" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Run Lucy
         env:
           VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
@@ -44,8 +61,9 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
           BETH_PHONE_NUMBER: ${{ secrets.BETH_PHONE_NUMBER }}
+          BETH_CELL_NUMBER: ${{ secrets.BETH_CELL_NUMBER }}
         working-directory: lucy
-        run: python lucy_call.py ${{ github.event.inputs.command || 'call' }}
+        run: python lucy_call.py ${{ steps.calltype.outputs.cmd }}
 
       - name: Post-process (save memories)
         if: always()
