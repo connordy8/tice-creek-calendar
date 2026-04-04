@@ -260,8 +260,8 @@ def update_assistant_prompt(evening=False):
             "to be reminded of in the morning.\n"
             "3. Keep this call SHORT and gentle — she should be "
             "going to sleep soon. 2-3 minutes max.\n"
-            "4. End warmly: wish her sweet dreams and let her know "
-            "you'll call in the morning.\n"
+            "4. End the call by saying \"Goodnight, Beth.\" Keep it "
+            "simple and warm. Let her know you'll call in the morning.\n"
         )
     else:
         first_message = (
