@@ -13,10 +13,12 @@ calendar_name: "Tice Creek – Beth's Classes"
 include_classes:
   - "zumba"
   - "ujam"
-  - name: "aquacise"
-    instructor: "bob"
+  - "aquacise"
   - "posture_balance_core"
   - "mat_yoga"
+  - "foreverfit"
+  - "forever fit"
+  - "tai chi"
 
 # Classes to exclude
 exclude_classes:
