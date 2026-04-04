@@ -1,0 +1,8 @@
+{
+  "builds": [
+    { "src": "api/vapi_tools.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/api/vapi_tools", "dest": "api/vapi_tools.py" }
+  ]
+}
