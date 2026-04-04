@@ -290,6 +290,70 @@ def make_call(phone_number):
         return None
 
 
+def wait_for_call_end(call_id, timeout=300, poll_interval=10):
+    """Poll Vapi until the call ends or times out. Returns the call data."""
+    import time
+    elapsed = 0
+    while elapsed < timeout:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        resp = requests.get(
+            "{}/call/{}".format(VAPI_API, call_id),
+            headers=vapi_headers(),
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "ended":
+                return data
+    return None
+
+
+def call_was_answered(call_data):
+    """Check if a completed call was actually answered by a human."""
+    if not call_data:
+        return False
+    reason = call_data.get("endedReason", "")
+    # These reasons mean nobody picked up
+    no_answer = ("no-answer", "busy", "failed", "machine-detected")
+    if reason in no_answer:
+        return False
+    # If the call lasted less than 10 seconds, likely not answered
+    started = call_data.get("startedAt", "")
+    ended = call_data.get("endedAt", "")
+    if started and ended:
+        try:
+            s = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            e = datetime.fromisoformat(ended.replace("Z", "+00:00"))
+            if (e - s).total_seconds() < 10:
+                return False
+        except (ValueError, TypeError):
+            pass
+    return True
+
+
+def make_call_with_fallback(home_phone, cell_phone):
+    """Try home phone first, fall back to cell if no answer."""
+    log.info("Trying home phone first: {}".format(home_phone))
+    call_data = make_call(home_phone)
+
+    if not call_data:
+        log.info("Home call failed to initiate, trying cell...")
+        return make_call(cell_phone)
+
+    call_id = call_data.get("id", "")
+    log.info("Waiting for home call to complete...")
+    result = wait_for_call_end(call_id)
+
+    if call_was_answered(result):
+        log.info("Home phone answered! Call complete.")
+        return result
+
+    log.info("Home phone not answered (reason: {}). Trying cell: {}".format(
+        result.get("endedReason", "unknown") if result else "timeout",
+        cell_phone))
+    return make_call(cell_phone)
+
+
 def get_recent_calls(limit=5):
     """Get recent calls from Vapi."""
     resp = requests.get(
@@ -373,12 +437,11 @@ def main():
 
     if command == "call":
         # Full flow: update prompt, then call Beth
-        beth_phone = os.environ.get("BETH_PHONE_NUMBER")
-        if not beth_phone:
-            log.error("BETH_PHONE_NUMBER not set")
-            sys.exit(1)
+        # Try home phone first, fall back to cell
+        beth_home = os.environ.get("BETH_PHONE_NUMBER", "+19252781199")
+        beth_cell = os.environ.get("BETH_CELL_NUMBER", "+14403211704")
         update_assistant_prompt()
-        make_call(beth_phone)
+        make_call_with_fallback(beth_home, beth_cell)
 
     elif command == "test":
         # Test call to Connor
