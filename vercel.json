@@ -1,0 +1,16 @@
+{
+  "builds": [
+    { "src": "api/vapi_tools.py", "use": "@vercel/python" },
+    { "src": "api/cron_trigger.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/api/vapi_tools", "dest": "api/vapi_tools.py" },
+    { "src": "/api/cron_trigger", "dest": "api/cron_trigger.py" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron_trigger?command=call-evening",
+      "schedule": "30 6 * * *"
+    }
+  ]
+}
