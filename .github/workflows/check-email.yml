@@ -1,15 +1,20 @@
 name: Check Email Updates
 
 on:
-  # Every 30 minutes during waking hours (8am-9pm Pacific = 4pm-5am UTC)
+  # Every 30 minutes during waking hours (8am-9pm Pacific)
+  # Covers both PST (16:00-05:00 UTC) and PDT (15:00-04:00 UTC)
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0,30 15-23 * * *"
+    - cron: "0,30 0-5 * * *"
 
   # Allow manual trigger
   workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  TZ: America/Los_Angeles
 
 jobs:
   check-email:

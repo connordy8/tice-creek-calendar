@@ -18,6 +18,9 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+env:
+  TZ: America/Los_Angeles
+
 jobs:
   auto-book:
     runs-on: ubuntu-latest

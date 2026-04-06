@@ -1553,10 +1553,9 @@ def main():
         log.error(
             "\n\u274c No classes scraped!\n"
             "   Run: python3 scraper.py --discover --no-headless\n"
-            "   Then share the debug/ folder so we can tune the parser."
+            "   Then share the debug/ folder so we can tune the parser.\n"
+            "   Exiting WITHOUT overwriting calendar to preserve old data."
         )
-        combined_file.write_text(
-            generate_combined_ics([], None, None, config)[0])
         sys.exit(1)
 
     # Show what we found

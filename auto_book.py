@@ -90,12 +90,8 @@ def class_matches(text):
     return None
 
 
-def login(page):
-    """Log into Mindbody from the schedule page.
-
-    We log in from the schedule page itself (click "Sign In" button)
-    so the session stays active on that page.
-    """
+def _attempt_login(page):
+    """Single login attempt. Returns True on success, raises on failure."""
     email = os.environ.get("MINDBODY_EMAIL")
     password = os.environ.get("MINDBODY_PASSWORD")
     if not email or not password:
@@ -178,6 +174,28 @@ def login(page):
 
     log.info("Login submitted. URL: {}".format(page.url[:80]))
     return True
+
+
+def login(page):
+    """Log into Mindbody with retry logic (up to 3 attempts, 5s delay).
+
+    We log in from the schedule page itself (click "Sign In" button)
+    so the session stays active on that page.
+    """
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return _attempt_login(page)
+        except Exception as e:
+            log.warning("Login attempt {}/{} failed: {}".format(
+                attempt, max_attempts, e))
+            if attempt < max_attempts:
+                log.info("Retrying login in 5 seconds...")
+                time.sleep(5)
+            else:
+                raise RuntimeError(
+                    "Login failed after {} attempts: {}".format(
+                        max_attempts, e))
 
 
 def navigate_to_schedule(page, target_date=None):

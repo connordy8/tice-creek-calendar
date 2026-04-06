@@ -21,6 +21,9 @@ on:
 permissions:
   contents: write
 
+env:
+  TZ: America/Los_Angeles
+
 jobs:
   sync:
     runs-on: ubuntu-latest

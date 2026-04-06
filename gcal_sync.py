@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 log = logging.getLogger("gcal_sync")
 
@@ -229,14 +230,26 @@ def sync_to_google_calendar(classes, movies, concerts, config):
     existing_events = {}
     page_token = None
     while True:
-        resp = service.events().list(
-            calendarId=calendar_id,
-            timeMin=time_min,
-            timeMax=time_max,
-            maxResults=2500,
-            singleEvents=True,
-            pageToken=page_token,
-        ).execute()
+        try:
+            resp = service.events().list(
+                calendarId=calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=2500,
+                singleEvents=True,
+                pageToken=page_token,
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 429:
+                log.error("Google Calendar API quota exceeded (429) "
+                          "while listing events. Try again later.")
+                return 0, 0, 0
+            elif e.resp.status == 403:
+                log.error("Google Calendar API forbidden (403) "
+                          "while listing events. Check service account "
+                          "permissions for calendar: {}".format(calendar_id))
+                return 0, 0, 0
+            raise
 
         for item in resp.get("items", []):
             eid = item.get("id", "")
@@ -267,12 +280,24 @@ def sync_to_google_calendar(classes, movies, concerts, config):
                 body["end"]["dateTime"]
             )
             if needs_update:
-                service.events().update(
-                    calendarId=calendar_id,
-                    eventId=eid,
-                    body=body,
-                ).execute()
-                updated += 1
+                try:
+                    service.events().update(
+                        calendarId=calendar_id,
+                        eventId=eid,
+                        body=body,
+                    ).execute()
+                    updated += 1
+                except HttpError as e:
+                    if e.resp.status == 429:
+                        log.error("Google Calendar API quota exceeded "
+                                  "(429) during update. Stopping sync.")
+                        return created, updated, 0
+                    elif e.resp.status == 403:
+                        log.error("Google Calendar API forbidden (403) "
+                                  "during update. Check permissions.")
+                        return created, updated, 0
+                    log.warning("Failed to update event {}: {}".format(
+                        eid, e))
         else:
             body["id"] = eid
             try:
@@ -281,10 +306,43 @@ def sync_to_google_calendar(classes, movies, concerts, config):
                     body=body,
                 ).execute()
                 created += 1
-            except Exception as e:
-                if "409" in str(e) or "duplicate" in str(e).lower():
+            except HttpError as e:
+                if e.resp.status == 429:
+                    log.error("Google Calendar API quota exceeded "
+                              "(429) during insert. Stopping sync.")
+                    return created, updated, 0
+                elif e.resp.status == 403:
+                    log.error("Google Calendar API forbidden (403) "
+                              "during insert. Check permissions.")
+                    return created, updated, 0
+                elif e.resp.status == 409 or "duplicate" in str(e).lower():
                     # Event already exists but wasn't in our query window;
                     # update it instead.
+                    log.info("Event {} already exists, updating".format(eid))
+                    try:
+                        del body["id"]
+                        service.events().update(
+                            calendarId=calendar_id,
+                            eventId=eid,
+                            body=body,
+                        ).execute()
+                        updated += 1
+                    except HttpError as e2:
+                        if e2.resp.status in (429, 403):
+                            log.error("Google Calendar API error ({}) "
+                                      "during fallback update. Stopping "
+                                      "sync.".format(e2.resp.status))
+                            return created, updated, 0
+                        log.warning("Failed to update event {}: {}".format(
+                            eid, e2))
+                    except Exception as e2:
+                        log.warning("Failed to update event {}: {}".format(
+                            eid, e2))
+                else:
+                    log.warning("Failed to create event {}: {}".format(
+                        eid, e))
+            except Exception as e:
+                if "409" in str(e) or "duplicate" in str(e).lower():
                     log.info("Event {} already exists, updating".format(eid))
                     try:
                         del body["id"]
@@ -311,6 +369,16 @@ def sync_to_google_calendar(classes, movies, concerts, config):
                     eventId=eid,
                 ).execute()
                 deleted += 1
+            except HttpError as e:
+                if e.resp.status == 429:
+                    log.error("Google Calendar API quota exceeded "
+                              "(429) during delete. Stopping sync.")
+                    break
+                elif e.resp.status == 403:
+                    log.error("Google Calendar API forbidden (403) "
+                              "during delete. Check permissions.")
+                    break
+                log.warning("Failed to delete event {}: {}".format(eid, e))
             except Exception as e:
                 log.warning("Failed to delete event {}: {}".format(eid, e))
 
