@@ -1,8 +1,9 @@
 # ============================================================
 # Tice Creek Calendar Sync – Beth's Preferences
 # ============================================================
-# Sync: Zumba, UJAM, Aquacise (Bob only), Posture Balance
-#        Core & Strength, Mat Yoga
+# Sync: Zumba, UJAM, Aquacise, Posture Balance, Mat Yoga,
+#        Functional Strength, Tai Chi, ForeverFit, Pickleball,
+#        Let's Stretch
 # Only sync: classes at 11am or later
 # ============================================================
 
@@ -19,6 +20,10 @@ include_classes:
   - "foreverfit"
   - "forever fit"
   - "tai chi"
+  - "functional strength"
+  - "pickleball"
+  - "let's stretch"
+  - "lets stretch"
 
 # Classes to exclude
 exclude_classes:

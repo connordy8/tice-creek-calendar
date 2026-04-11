@@ -4,8 +4,9 @@ Logs into Mindbody, finds upcoming classes that match Beth's preferences,
 and books them automatically when registration is open. Then checks
 Beth's actual enrolled schedule and syncs it to Google Calendar.
 
-Target classes: Zumba (10 AM+), UJAM, Aquacise (Bob only), ForeverFit
-(Bob only), Posture Balance Core & Strength, Mat Yoga — all at 11 AM
+Target classes: Zumba (10 AM+), UJAM, Aquacise (all instructors),
+ForeverFit, Posture Balance Core & Strength, Mat Yoga, Functional
+Strength, Tai Chi, Pickleball Novice, Let's Stretch — all at 11 AM
 or later unless noted.
 """
 
@@ -39,16 +40,18 @@ SCHEDULE_URL = (
 TARGET_CLASSES = [
     {"keywords": ["zumba"], "any_instructor": True, "earliest_hour": 10},
     {"keywords": ["ujam"], "any_instructor": True},
-    {"keywords": ["aquacise"], "instructor": "bob"},
-    {"keywords": ["aqua"], "instructor": "bob"},
-    {"keywords": ["water", "aerobics"], "instructor": "bob"},
+    {"keywords": ["aquacise"], "any_instructor": True},
+    {"keywords": ["aqua"], "any_instructor": True},
+    {"keywords": ["water", "aerobics"], "any_instructor": True},
     {"keywords": ["posture", "balance"], "any_instructor": True},
     {"keywords": ["mat", "yoga"], "any_instructor": True},
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
     {"keywords": ["let's", "stretch"], "any_instructor": True},
     {"keywords": ["lets", "stretch"], "any_instructor": True},
-    {"keywords": ["foreverfit"], "instructor": "bob"},
-    {"keywords": ["forever", "fit"], "instructor": "bob"},
+    {"keywords": ["foreverfit"], "any_instructor": True},
+    {"keywords": ["forever", "fit"], "any_instructor": True},
+    {"keywords": ["functional", "strength"], "any_instructor": True},
+    {"keywords": ["tai", "chi"], "any_instructor": True},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
