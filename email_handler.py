@@ -44,8 +44,8 @@ EVENT_TTL_DAYS = 90
 # Gmail IMAP
 # =========================================================================
 
-def connect_gmail():
-    """Connect to Gmail via IMAP using App Password."""
+def connect_gmail(max_retries=3):
+    """Connect to Gmail via IMAP using App Password. Retries on failure."""
     email_addr = os.environ.get("CALENDAR_EMAIL", "bethcalendarupdate@gmail.com")
     email_pass = os.environ.get("CALENDAR_EMAIL_PASSWORD", "")
 
@@ -53,14 +53,22 @@ def connect_gmail():
         log.error("CALENDAR_EMAIL_PASSWORD not set")
         return None
 
-    try:
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        imap.login(email_addr, email_pass)
-        log.info("Connected to Gmail as {}".format(email_addr))
-        return imap
-    except Exception as e:
-        log.error("Gmail login failed: {}".format(e))
-        return None
+    import time as _time
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            imap = imaplib.IMAP4_SSL("imap.gmail.com")
+            imap.login(email_addr, email_pass)
+            log.info("Connected to Gmail as {}".format(email_addr))
+            return imap
+        except Exception as e:
+            log.warning("Gmail login attempt {}/{} failed: {}".format(
+                attempt, max_retries, e))
+            if attempt < max_retries:
+                _time.sleep(5 * attempt)
+
+    log.error("Gmail login failed after {} attempts".format(max_retries))
+    return None
 
 
 def fetch_unread_emails(imap):

@@ -1,18 +1,11 @@
 name: Auto-Book Classes
 
 on:
-  # Run every 2 hours to grab new spots ASAP
-  # Times in UTC — Pacific equivalents:
-  #   08:00 UTC = midnight PT  (new day, new slots!)
-  #   10:00 UTC = 2 AM PT
-  #   12:00 UTC = 4 AM PT
-  #   13:30 UTC = 5:30 AM PT  (before Beth's day starts)
-  #   16:00 UTC = 8 AM PT
-  #   18:00 UTC = 10 AM PT
-  #   20:00 UTC = noon PT
-  #   22:00 UTC = 2 PM PT
+  # Run every 2 hours during waking hours (Pacific)
+  # UTC hours: 15-05 = 7 AM - 9 PM Pacific
   schedule:
-    - cron: "0 8,10,12,16,18,20,22 * * *"
+    - cron: "0 15,17,19,21,23 * * *"
+    - cron: "0 1,3,5 * * *"
     - cron: "30 13 * * *"
 
   # Allow manual trigger
@@ -24,7 +17,7 @@ env:
 jobs:
   auto-book:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -34,6 +27,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -56,3 +50,11 @@ jobs:
           name: auto-book-debug-${{ github.run_number }}
           path: debug/
           retention-days: 3
+
+      - name: Send failure alert
+        if: failure()
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ALERT_EMAIL: connordy@gmail.com
+        run: python notify.py --alert "Auto-Book" "Class booking workflow failed. Beth's classes may not be reserved."

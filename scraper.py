@@ -158,44 +158,67 @@ def parse_bw_widget_html(html, label=""):
     return classes
 
 
-def scrape_page(page, url, label):
-    """Load a schedule page and extract classes from the bw-widget."""
-    log.info("Loading: {}".format(url))
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    except Exception as e:
-        log.warning("  Page load issue: {}".format(e))
+def scrape_page(page, url, label, max_retries=3):
+    """Load a schedule page and extract classes from the bw-widget.
 
-    # Wait for the widget to render
-    page.wait_for_timeout(15000)
-
-    all_classes = []
-
-    # Try main page HTML
-    html = page.content()
-    classes = parse_bw_widget_html(html, label)
-    if classes:
-        log.info("  Found {} classes in main frame".format(len(classes)))
-        all_classes.extend(classes)
-
-    # Also check iframes (the widget usually lives in an iframe)
-    for i, frame in enumerate(page.frames):
-        if frame == page.main_frame:
-            continue
+    Retries up to max_retries times if no classes are found, with
+    increasing wait times to handle slow widget loading.
+    """
+    for attempt in range(1, max_retries + 1):
+        log.info("Loading: {} (attempt {}/{})".format(url, attempt, max_retries))
         try:
-            frame_html = frame.content()
-            classes = parse_bw_widget_html(frame_html, label)
-            if classes:
-                log.info("  Found {} classes in frame {} ({})".format(
-                    len(classes), i, frame.url[:80]))
-                all_classes.extend(classes)
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
         except Exception as e:
-            log.debug("  Frame {} error: {}".format(i, e))
+            log.warning("  Page load issue: {}".format(e))
+            if attempt < max_retries:
+                page.wait_for_timeout(5000)
+                continue
 
-    if not all_classes:
-        log.info("  No classes found on this page")
+        # Wait for the widget to render (longer on retries)
+        wait_ms = 15000 + (attempt - 1) * 10000
+        page.wait_for_timeout(wait_ms)
 
-    return all_classes
+        all_classes = []
+
+        # Try main page HTML
+        html = page.content()
+        classes = parse_bw_widget_html(html, label)
+        if classes:
+            log.info("  Found {} classes in main frame".format(len(classes)))
+            all_classes.extend(classes)
+
+        # Also check iframes (the widget usually lives in an iframe)
+        for i, frame in enumerate(page.frames):
+            if frame == page.main_frame:
+                continue
+            try:
+                frame_html = frame.content()
+                classes = parse_bw_widget_html(frame_html, label)
+                if classes:
+                    log.info("  Found {} classes in frame {} ({})".format(
+                        len(classes), i, frame.url[:80]))
+                    all_classes.extend(classes)
+            except Exception as e:
+                log.debug("  Frame {} error: {}".format(i, e))
+
+        if all_classes:
+            return all_classes
+
+        if attempt < max_retries:
+            log.warning("  No classes found, retrying...")
+            # Save debug screenshot on failed attempt
+            Path("debug").mkdir(exist_ok=True)
+            page.screenshot(
+                path="debug/{}_attempt{}.png".format(label, attempt))
+
+    log.warning("  No classes found after {} attempts".format(max_retries))
+    # Save final debug info
+    Path("debug").mkdir(exist_ok=True)
+    page.screenshot(path="debug/{}_final_fail.png".format(label))
+    with open("debug/{}_final_fail.html".format(label), "w") as f:
+        f.write(page.content())
+
+    return []
 
 
 # =========================================================================

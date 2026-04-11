@@ -1,0 +1,44 @@
+name: Calendar Healthcheck
+
+on:
+  # Run twice daily: 9 AM and 6 PM Pacific (5 PM and 2 AM UTC)
+  schedule:
+    - cron: "0 17 * * *"
+    - cron: "0 2 * * *"
+
+  workflow_dispatch:
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install google-auth google-api-python-client pyyaml
+
+      - name: Run healthcheck
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ALERT_EMAIL: connordy@gmail.com
+        run: python healthcheck.py
+
+      - name: Send failure alert
+        if: failure()
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ALERT_EMAIL: connordy@gmail.com
+        run: python notify.py --alert "Healthcheck" "Calendar healthcheck detected issues. Beth's calendar may be stale or empty."

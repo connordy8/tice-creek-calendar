@@ -47,6 +47,34 @@ def get_calendar_service():
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
+def gcal_api_call(fn, max_retries=3, **kwargs):
+    """Execute a Google Calendar API call with retry on transient errors.
+
+    Retries on 429 (rate limit), 500, 503 (server errors) with
+    exponential backoff.
+    """
+    import time as _time
+    from googleapiclient.errors import HttpError
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fn(**kwargs).execute()
+        except HttpError as e:
+            status = e.resp.status if hasattr(e, 'resp') else 0
+            if status in (429, 500, 503) and attempt < max_retries:
+                wait = 2 ** attempt
+                log.warning("  API error {} (attempt {}/{}), retrying in {}s"
+                            .format(status, attempt, max_retries, wait))
+                _time.sleep(wait)
+            else:
+                raise
+        except Exception as e:
+            if attempt < max_retries:
+                _time.sleep(2 ** attempt)
+            else:
+                raise
+
+
 def make_event_id(prefix, unique_str):
     """Create a deterministic Google Calendar event ID.
 

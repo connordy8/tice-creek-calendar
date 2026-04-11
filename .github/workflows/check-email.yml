@@ -29,6 +29,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
       - name: Install dependencies
         run: pip install pyyaml anthropic
@@ -39,6 +40,14 @@ jobs:
           CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python email_handler.py
+
+      - name: Send failure alert
+        if: failure()
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ALERT_EMAIL: connordy@gmail.com
+        run: python notify.py --alert "Email Handler" "Email check failed. Manual calendar updates may be missed."
 
       - name: Commit email updates if any
         run: |
