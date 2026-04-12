@@ -11,6 +11,11 @@ on:
   # Allow manual trigger
   workflow_dispatch:
 
+# Prevent overlapping runs — if a run is in progress, queue the next one
+concurrency:
+  group: auto-book
+  cancel-in-progress: false
+
 env:
   TZ: America/Los_Angeles
 

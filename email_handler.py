@@ -218,6 +218,38 @@ def interpret_email_with_claude(email_data):
         if not isinstance(actions, list):
             actions = [actions]
 
+        # Validate each action has required fields and sane values
+        validated = []
+        for action in actions:
+            act_type = action.get("action", "")
+            if act_type not in ("add", "cancel", "modify", "unknown"):
+                log.warning("  Skipping invalid action type: {}".format(
+                    act_type))
+                continue
+            if act_type != "unknown":
+                # Validate date format
+                date_val = action.get("date", "")
+                if date_val:
+                    try:
+                        datetime.strptime(date_val, "%Y-%m-%d")
+                    except ValueError:
+                        log.warning(
+                            "  Invalid date '{}' in action, skipping"
+                            .format(date_val))
+                        continue
+                # Validate time format
+                time_val = action.get("start_time", "")
+                if time_val:
+                    try:
+                        datetime.strptime(time_val, "%H:%M")
+                    except ValueError:
+                        log.warning(
+                            "  Invalid time '{}' in action, skipping"
+                            .format(time_val))
+                        continue
+            validated.append(action)
+        actions = validated
+
         log.info("  Claude extracted {} action(s)".format(len(actions)))
         return actions
 
@@ -281,8 +313,24 @@ def apply_actions(existing_events, actions, email_data):
         source = action.get("source_email", email_data.get("from", ""))
 
         if act_type == "unknown":
-            log.warning("  Skipping unknown action: {}".format(
-                action.get("notes", "no details")))
+            notes = action.get("notes", "no details")
+            log.warning("  Could not parse action: {}".format(notes))
+            # Alert so unparseable emails don't get silently lost
+            try:
+                from notify import send_alert
+                send_alert(
+                    "Email Handler",
+                    "Could not parse calendar action from email",
+                    extra_context=(
+                        "From: {}\nSubject: {}\nDetails: {}"
+                    ).format(
+                        email_data.get("from", "?"),
+                        email_data.get("subject", "?"),
+                        notes,
+                    ),
+                )
+            except Exception:
+                pass  # Don't crash if notify fails
             continue
 
         # Generate a unique ID for this event

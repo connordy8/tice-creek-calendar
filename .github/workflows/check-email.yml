@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# Prevent overlapping with sync workflow (both push to same repo)
+concurrency:
+  group: calendar-updates
+  cancel-in-progress: false
+
 env:
   TZ: America/Los_Angeles
 

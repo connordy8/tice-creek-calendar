@@ -693,7 +693,7 @@ def get_enrolled_classes(page):
         for cls in confirmed:
             dedup_key = (
                 cls["date"], cls["time"].upper(),
-                cls["name"].lower()[:20])
+                cls["name"].lower())
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 enrolled.append(cls)
@@ -730,7 +730,7 @@ def get_enrolled_classes(page):
         for cls in wl_entries:
             dedup_key = (
                 cls["date"], cls["time"].upper(),
-                cls["name"].lower()[:20])
+                cls["name"].lower())
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 enrolled.append(cls)
@@ -812,7 +812,7 @@ def get_enrolled_classes(page):
 
             date_iso = target.strftime("%Y-%m-%d")
             name = " ".join(m["keywords"]).title()
-            dedup_key = (date_iso, time_str.upper(), name.lower()[:20])
+            dedup_key = (date_iso, time_str.upper(), name.lower())
 
             if dedup_key not in seen:
                 seen.add(dedup_key)
@@ -887,8 +887,11 @@ def sync_enrolled_to_gcal(enrolled_classes):
         emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
 
         # Deterministic event ID (same ID whether waitlisted or confirmed,
-        # so the event updates in-place when status changes)
-        raw = "booked-{}-{}-{}".format(name, date_str, time_str)
+        # so the event updates in-place when status changes).
+        # Include room to avoid collisions between same-named classes
+        # in different studios.
+        raw = "booked-{}-{}-{}-{}".format(
+            name, date_str, time_str, room)
         h = hashlib.md5(raw.encode()).hexdigest()
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
@@ -1189,8 +1192,10 @@ def run_auto_booking(days_ahead=7):
         try:
             enrolled_classes = get_enrolled_classes(page)
         except Exception as e:
-            log.warning("Failed to check enrolled classes: {}".format(e))
+            log.error("Failed to check enrolled classes: {}".format(e))
             page.screenshot(path="debug/enrolled_error.png")
+            browser.close()
+            sys.exit(1)
 
         browser.close()
 
@@ -1210,7 +1215,8 @@ def run_auto_booking(days_ahead=7):
         try:
             sync_enrolled_to_gcal(enrolled_classes)
         except Exception as e:
-            log.warning("Calendar sync failed: {}".format(e))
+            log.error("Calendar sync failed: {}".format(e))
+            sys.exit(1)
     else:
         log.info("No enrolled classes to sync — checking if we should "
                  "clear stale calendar events...")
