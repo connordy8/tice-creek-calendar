@@ -124,6 +124,20 @@ def parse_bw_widget_html(html, label=""):
         if staff_block:
             instructor = re.sub(r'<[^>]+>', '', staff_block.group(1)).strip()
 
+        # Room/Location (bw-session__location or similar)
+        room = ""
+        loc_block = re.search(
+            r'class="bw-session__location"[^>]*>(.*?)</div>',
+            content, re.DOTALL)
+        if loc_block:
+            room = re.sub(r'<[^>]+>', '', loc_block.group(1)).strip()
+        if not room:
+            # Also try data attribute
+            loc_attr = re.search(
+                r'data-bw-widget-mbo-location="([^"]+)"', opening_tag)
+            if loc_attr:
+                room = loc_attr.group(1).strip()
+
         # Parse the start datetime
         try:
             start_dt = datetime.fromisoformat(start_iso)
@@ -140,6 +154,7 @@ def parse_bw_widget_html(html, label=""):
             "time": start_dt.strftime("%I:%M %p").lstrip("0"),
             "start_hour": start_dt.hour,
             "instructor": instructor,
+            "room": room,
             "source": label,
         }
 

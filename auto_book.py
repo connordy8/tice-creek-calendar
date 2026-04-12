@@ -56,6 +56,48 @@ TARGET_CLASSES = [
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
 
+# Known rooms/studios at Tice Creek Fitness Center.
+# Used to extract specific locations from Mindbody schedule text.
+TICE_CREEK_ROOMS = [
+    "Serenity Studio",
+    "Movement Studio",
+    "Fitness Studio",
+    "Group Fitness Studio",
+    "Mind Body Studio",
+    "Cycling Studio",
+    "Lap Pool",
+    "Therapy Pool",
+    "Outdoor Pool",
+    "Pool",
+    "Gymnasium",
+    "Gym",
+    "Court 1", "Court 2", "Court 3", "Court 4",
+    "Pickleball Court",
+    "Multi-Purpose Room",
+    "Multipurpose Room",
+]
+
+TICE_CREEK_ADDRESS = "Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595"
+
+
+def extract_room(text):
+    """Extract a room/studio name from Mindbody schedule text.
+
+    Returns the room name if found, or empty string.
+    """
+    t = text.lower()
+    for room in TICE_CREEK_ROOMS:
+        if room.lower() in t:
+            return room
+    return ""
+
+
+def build_location(room):
+    """Build a full location string from a room name."""
+    if room:
+        return "{}, {}".format(room, TICE_CREEK_ADDRESS)
+    return TICE_CREEK_ADDRESS
+
 # Mindbody "My Schedule" URL — shows Beth's enrolled classes
 MY_SCHEDULE_URL = (
     "https://clients.mindbodyonline.com/classic/ws?studioid={}"
@@ -251,9 +293,24 @@ def find_reservable_classes(page):
             const row = btn.closest('.oddRow, .evenRow, tr');
             const rowText = row ? (row.innerText || '') : '';
 
+            // Also look for a room/location element in the row
+            let location = '';
+            if (row) {
+                // Mindbody often has location in a separate cell or span
+                const locEl = row.querySelector('.classLocation, .location, [class*="location"]');
+                if (locEl) {
+                    location = (locEl.innerText || '').trim();
+                }
+                // Also check for room info in the full text
+                if (!location) {
+                    location = rowText.substring(0, 500);
+                }
+            }
+
             results.push({
                 idx: idx,
                 rowText: rowText.substring(0, 500).replace(/\\n/g, ' | '),
+                location: location.substring(0, 200),
                 btnTag: btn.tagName,
                 btnText: (btn.value || btn.innerText || '').substring(0, 50),
             });
@@ -598,12 +655,23 @@ def get_enrolled_classes(page):
             if not class_name or len(class_name) < 3:
                 continue
 
+            # Extract room from the line (tab fields or full text)
+            room = extract_room(line)
+            # Also check surrounding lines for room info
+            if not room:
+                for j in range(
+                        max(0, i - 1), min(i + 4, len(lines))):
+                    room = extract_room(lines[j])
+                    if room:
+                        break
+
             entries.append({
                 "name": class_name,
                 "date": date_iso,
                 "time": time_str,
                 "is_waitlist": is_waitlist_section,
                 "is_club": False,
+                "room": room,
                 "raw": line[:200],
                 "keywords": [],
             })
@@ -697,13 +765,21 @@ def get_enrolled_classes(page):
             rows.forEach(row => {
                 const text = (row.innerText || '').trim();
                 if (text.length > 20) {
-                    results.push(text.substring(0, 500));
+                    // Also try to get location from a dedicated element
+                    let loc = '';
+                    const locEl = row.querySelector('.classLocation, .location, [class*="location"]');
+                    if (locEl) loc = (locEl.innerText || '').trim();
+                    results.push({text: text.substring(0, 500), location: loc});
                 }
             });
             return results;
         }""")
 
-        for row_text in all_rows:
+        for row_entry in all_rows:
+            row_text = row_entry["text"] if isinstance(
+                row_entry, dict) else row_entry
+            row_loc = row_entry.get(
+                "location", "") if isinstance(row_entry, dict) else ""
             lower = row_text.lower()
 
             # Only looking for club classes here
@@ -731,6 +807,9 @@ def get_enrolled_classes(page):
             except ValueError:
                 continue
 
+            # Extract room/studio location
+            room = extract_room(row_loc) or extract_room(row_text)
+
             date_iso = target.strftime("%Y-%m-%d")
             name = " ".join(m["keywords"]).title()
             dedup_key = (date_iso, time_str.upper(), name.lower()[:20])
@@ -743,11 +822,12 @@ def get_enrolled_classes(page):
                     "time": time_str,
                     "is_waitlist": False,
                     "is_club": True,
+                    "room": room,
                     "raw": row_text[:200],
                     "keywords": m["keywords"],
                 })
-                log.info("  {} (CLUB) {} @ {}".format(
-                    date_iso, name, time_str))
+                log.info("  {} (CLUB) {} @ {} [{}]".format(
+                    date_iso, name, time_str, room or "no room"))
 
     log.info("Total enrolled/club classes: {}".format(len(enrolled)))
     return enrolled
@@ -841,13 +921,11 @@ def sync_enrolled_to_gcal(enrolled_classes):
             )
             color_id = "2"  # Sage (green) — confirmed
 
+        room = cls.get("room", "")
         desired[eid] = {
             "summary": summary,
             "description": description,
-            "location": (
-                "Tice Creek Fitness Center, "
-                "1751 Tice Creek Dr, Walnut Creek, CA 94595"
-            ),
+            "location": build_location(room),
             "start": {
                 "dateTime": start.strftime("%Y-%m-%dT%H:%M:%S"),
                 "timeZone": "America/Los_Angeles",
