@@ -34,6 +34,11 @@ SCHEDULE_URL = (
     .format(STUDIO_ID)
 )
 
+# Location IDs on Mindbody for Tice Creek.
+# sLoc=0 is "all locations" for group fitness, but aquatics may need
+# a separate query. We check all locations to catch pool classes.
+SCHEDULE_LOCATIONS = [0, 1]  # 0=main fitness, 1=aquatics/pool
+
 # Classes Beth wants to book (lowercase for matching).
 # Each entry has keywords that ALL must appear in the class text.
 # earliest_hour overrides the default for specific classes.
@@ -51,6 +56,7 @@ TARGET_CLASSES = [
     {"keywords": ["foreverfit"], "any_instructor": True},
     {"keywords": ["forever", "fit"], "any_instructor": True},
     {"keywords": ["functional", "strength"], "any_instructor": True},
+    {"keywords": ["functional", "fitness"], "any_instructor": True},
     {"keywords": ["tai", "chi"], "any_instructor": True},
 ]
 
@@ -320,18 +326,43 @@ def find_reservable_classes(page):
 
 
 def find_and_book_classes(page, target_date=None):
-    """Find matching classes on the schedule and attempt to book them."""
+    """Find matching classes on the schedule and attempt to book them.
+
+    Checks multiple Mindbody location IDs (fitness + aquatics) to
+    ensure pool classes like Aquacise are not missed.
+    """
     if target_date is None:
         target_date = datetime.now()
 
-    navigate_to_schedule(page, target_date)
     booked = []
     skipped = []
     already_booked = []
+    all_reservable = []
 
-    # Use JavaScript to find all reservable classes and their context
-    reservable = find_reservable_classes(page)
-    log.info("Found {} reserve/sign-up buttons on page".format(
+    # Check each location (fitness + aquatics)
+    for loc_id in SCHEDULE_LOCATIONS:
+        date_str = target_date.strftime("%m/%d/%Y")
+        url = (
+            "https://clients.mindbodyonline.com/classic/ws?studioid={}"
+            "&stype=-7&sView=day&sLoc={}&date={}"
+            .format(STUDIO_ID, loc_id, date_str)
+        )
+        log.info("Loading schedule for {} (location {})...".format(
+            target_date.strftime("%A %B %d"), loc_id))
+        page.goto(url, timeout=30000)
+        page.wait_for_timeout(3000)
+
+        reservable = find_reservable_classes(page)
+        log.info("Found {} reserve/sign-up buttons (location {})".format(
+            len(reservable), loc_id))
+        all_reservable.extend(reservable)
+
+    # Take debug screenshot of last location loaded
+    page.screenshot(path="debug/schedule_{}.png".format(
+        target_date.strftime("%m%d")))
+
+    reservable = all_reservable
+    log.info("Total: {} reserve/sign-up buttons across all locations".format(
         len(reservable)))
 
     for entry in reservable:
@@ -751,15 +782,19 @@ def get_enrolled_classes(page):
     for day_offset in range(14):
         target = today + timedelta(days=day_offset)
         date_str = target.strftime("%m/%d/%Y")
-        url = (
-            "https://clients.mindbodyonline.com/classic/ws?studioid={}"
-            "&stype=-7&sView=day&sLoc=0&date={}"
-            .format(STUDIO_ID, date_str)
-        )
-        page.goto(url, timeout=30000)
-        page.wait_for_timeout(2000)
 
-        all_rows = page.evaluate("""() => {
+        # Check all locations (fitness + aquatics)
+        all_rows = []
+        for loc_id in SCHEDULE_LOCATIONS:
+            url = (
+                "https://clients.mindbodyonline.com/classic/ws"
+                "?studioid={}&stype=-7&sView=day&sLoc={}&date={}"
+                .format(STUDIO_ID, loc_id, date_str)
+            )
+            page.goto(url, timeout=30000)
+            page.wait_for_timeout(2000)
+
+            loc_rows = page.evaluate("""() => {
             const results = [];
             const rows = document.querySelectorAll('.oddRow, .evenRow');
             rows.forEach(row => {
@@ -774,6 +809,7 @@ def get_enrolled_classes(page):
             });
             return results;
         }""")
+            all_rows.extend(loc_rows)
 
         for row_entry in all_rows:
             row_text = row_entry["text"] if isinstance(
