@@ -820,7 +820,13 @@ def get_enrolled_classes(page):
                 "location", "") if isinstance(row_entry, dict) else ""
             lower = row_text.lower()
 
-            # Check if this class matches Beth's preferences
+            # Only looking for club/drop-in classes here (no booking needed).
+            # Bookable classes are handled by the reserve-button phase
+            # and show up via "My Schedule" once enrolled.
+            if "club class" not in lower and "club:" not in lower \
+                    and "club " not in lower and "open play" not in lower:
+                continue
+
             m = class_matches(row_text)
             if not m:
                 continue
@@ -849,8 +855,6 @@ def get_enrolled_classes(page):
             name = " ".join(m["keywords"]).title()
             dedup_key = (date_iso, time_str.upper(), name.lower())
 
-            is_club = ("club class" in lower or "club:" in lower)
-
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 enrolled.append({
@@ -858,14 +862,13 @@ def get_enrolled_classes(page):
                     "date": date_iso,
                     "time": time_str,
                     "is_waitlist": False,
-                    "is_club": is_club,
+                    "is_club": True,
                     "room": room,
                     "raw": row_text[:200],
                     "keywords": m["keywords"],
                 })
-                label = "CLUB" if is_club else "AVAILABLE"
-                log.info("  {} ({}) {} @ {} [{}]".format(
-                    date_iso, label, name, time_str,
+                log.info("  {} (CLUB) {} @ {} [{}]".format(
+                    date_iso, name, time_str,
                     room or "no room"))
 
     log.info("Total enrolled/club classes: {}".format(len(enrolled)))
