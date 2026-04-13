@@ -51,6 +51,8 @@ TARGET_CLASSES = [
     {"keywords": ["posture", "balance"], "any_instructor": True},
     {"keywords": ["mat", "yoga"], "any_instructor": True},
     {"keywords": ["pickleball", "novice"], "any_instructor": True},
+    {"keywords": ["pickleball", "open", "play"], "any_instructor": True},
+    {"keywords": ["pickleball", "club"], "any_instructor": True},
     {"keywords": ["let's", "stretch"], "any_instructor": True},
     {"keywords": ["lets", "stretch"], "any_instructor": True},
     {"keywords": ["foreverfit"], "any_instructor": True},
