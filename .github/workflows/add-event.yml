@@ -1,0 +1,72 @@
+name: Add Event to Beth Calendar
+
+on:
+  workflow_dispatch:
+    inputs:
+      summary:
+        description: 'Event title'
+        required: true
+      date:
+        description: 'Date (YYYY-MM-DD)'
+        required: true
+      start_time:
+        description: 'Start time (HH:MM, 24h)'
+        required: true
+      end_time:
+        description: 'End time (HH:MM, 24h)'
+        required: true
+      location:
+        description: 'Location (optional)'
+        required: false
+        default: 'Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595'
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install google-auth google-api-python-client
+      - name: Add event
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          python3 -c "
+          import json, os
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']),
+              scopes=['https://www.googleapis.com/auth/calendar'])
+          svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+
+          body = {
+              'summary': '${{ inputs.summary }}',
+              'location': '${{ inputs.location }}',
+              'start': {
+                  'dateTime': '${{ inputs.date }}T${{ inputs.start_time }}:00',
+                  'timeZone': 'America/Los_Angeles',
+              },
+              'end': {
+                  'dateTime': '${{ inputs.date }}T${{ inputs.end_time }}:00',
+                  'timeZone': 'America/Los_Angeles',
+              },
+              'colorId': '2',
+          }
+
+          event = svc.events().insert(
+              calendarId=os.environ['GOOGLE_CALENDAR_ID'],
+              body=body,
+          ).execute()
+
+          print('Created: {} at {}'.format(body['summary'], body['start']['dateTime']))
+          print('Event ID: {}'.format(event.get('id', '')))
+          "

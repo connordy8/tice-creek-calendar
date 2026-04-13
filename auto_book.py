@@ -60,6 +60,7 @@ TARGET_CLASSES = [
     {"keywords": ["functional", "strength"], "any_instructor": True},
     {"keywords": ["functional", "fitness"], "any_instructor": True},
     {"keywords": ["tai", "chi"], "any_instructor": True},
+    {"keywords": ["strength", "stretch"], "any_instructor": True},
 ]
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
