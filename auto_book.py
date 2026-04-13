@@ -917,6 +917,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
 
         name = cls["name"]
         is_waitlist = cls.get("is_waitlist", False)
+        room = cls.get("room", "")
 
         is_water = any(
             w in name.lower() for w in ["aqua", "water", "swim"])
@@ -960,7 +961,6 @@ def sync_enrolled_to_gcal(enrolled_classes):
             )
             color_id = "2"  # Sage (green) — confirmed
 
-        room = cls.get("room", "")
         desired[eid] = {
             "summary": summary,
             "description": description,
