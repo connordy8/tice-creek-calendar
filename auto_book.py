@@ -897,9 +897,12 @@ def sync_enrolled_to_gcal(enrolled_classes):
     service = build(
         "calendar", "v3", credentials=creds, cache_discovery=False)
 
-    # Build desired events from enrolled classes
+    # Build desired events from enrolled classes.
+    # Each class is wrapped in try/except so one bad entry never
+    # crashes the entire sync.
     desired = {}
     for cls in enrolled_classes:
+      try:
         date_str = cls.get("date", "")
         time_str = cls.get("time", "")
         if not date_str or not time_str:
@@ -921,7 +924,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
 
         end = start + timedelta(minutes=50)  # Most classes are 50 min
 
-        name = cls["name"]
+        name = cls.get("name", "Unknown Class")
         is_waitlist = cls.get("is_waitlist", False)
         room = cls.get("room", "")
 
@@ -929,10 +932,8 @@ def sync_enrolled_to_gcal(enrolled_classes):
             w in name.lower() for w in ["aqua", "water", "swim"])
         emoji = "\U0001f3ca" if is_water else "\U0001f3cb\ufe0f"
 
-        # Deterministic event ID (same ID whether waitlisted or confirmed,
-        # so the event updates in-place when status changes).
-        # Include room to avoid collisions between same-named classes
-        # in different studios.
+        # Deterministic event ID. Use room if available, but fall back
+        # gracefully if not — never crash over a missing field.
         raw = "booked-{}-{}-{}-{}".format(
             name, date_str, time_str, room)
         h = hashlib.md5(raw.encode()).hexdigest()
@@ -967,10 +968,16 @@ def sync_enrolled_to_gcal(enrolled_classes):
             )
             color_id = "2"  # Sage (green) — confirmed
 
+        # Build location string safely
+        try:
+            location = build_location(room)
+        except Exception:
+            location = TICE_CREEK_ADDRESS
+
         desired[eid] = {
             "summary": summary,
             "description": description,
-            "location": build_location(room),
+            "location": location,
             "start": {
                 "dateTime": start.strftime("%Y-%m-%dT%H:%M:%S"),
                 "timeZone": "America/Los_Angeles",
@@ -981,6 +988,11 @@ def sync_enrolled_to_gcal(enrolled_classes):
             },
             "colorId": color_id,
         }
+      except Exception as e:
+        # Never let one bad class entry crash the entire sync.
+        # Log and skip — the rest of the classes still get synced.
+        log.warning("  Skipping class due to error: {} — {}".format(
+            cls.get("name", "?"), e))
 
     log.info("Desired booked events: {}".format(len(desired)))
 
@@ -1236,8 +1248,9 @@ def run_auto_booking(days_ahead=7):
         except Exception as e:
             log.error("Failed to check enrolled classes: {}".format(e))
             page.screenshot(path="debug/enrolled_error.png")
-            browser.close()
-            sys.exit(1)
+            # Don't crash — booking may have succeeded even if
+            # schedule check failed. Calendar sync will be skipped
+            # but existing events are preserved.
 
         browser.close()
 
@@ -1258,7 +1271,14 @@ def run_auto_booking(days_ahead=7):
             sync_enrolled_to_gcal(enrolled_classes)
         except Exception as e:
             log.error("Calendar sync failed: {}".format(e))
-            sys.exit(1)
+            # Don't crash the workflow — booking succeeded,
+            # calendar will catch up on next run.
+            # But do try to send an alert.
+            try:
+                from notify import send_alert
+                send_alert("Auto-Book", "Calendar sync failed: {}".format(e))
+            except Exception:
+                pass
     else:
         log.info("No enrolled classes to sync — checking if we should "
                  "clear stale calendar events...")
