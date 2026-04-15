@@ -1,0 +1,68 @@
+name: Cleanup Duplicate Events
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install google-auth google-api-python-client
+      - name: Remove duplicates
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          python3 -c "
+          import json, os
+          from datetime import datetime, timedelta
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']),
+              scopes=['https://www.googleapis.com/auth/calendar'])
+          svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+          cal = os.environ['GOOGLE_CALENDAR_ID']
+
+          now = datetime.utcnow()
+          resp = svc.events().list(
+              calendarId=cal,
+              timeMin=(now - timedelta(days=1)).isoformat() + 'Z',
+              timeMax=(now + timedelta(days=30)).isoformat() + 'Z',
+              maxResults=500,
+              singleEvents=True,
+              orderBy='startTime',
+          ).execute()
+
+          # Group events by (summary, start time)
+          groups = {}
+          for e in resp.get('items', []):
+              if e.get('status') == 'cancelled':
+                  continue
+              key = (e.get('summary', ''), e.get('start', {}).get('dateTime', ''))
+              groups.setdefault(key, []).append(e)
+
+          deleted = 0
+          for key, events in groups.items():
+              if len(events) > 1:
+                  # Keep the newest one (last created), delete the rest
+                  events.sort(key=lambda e: e.get('created', ''))
+                  for dup in events[:-1]:
+                      try:
+                          svc.events().delete(calendarId=cal, eventId=dup['id']).execute()
+                          deleted += 1
+                          print(f'Deleted duplicate: {dup.get(\"summary\", \"?\")} at {key[1]}')
+                      except Exception as ex:
+                          print(f'Failed to delete {dup[\"id\"]}: {ex}')
+
+          print(f'Cleaned up {deleted} duplicate events')
+          "
