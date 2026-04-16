@@ -63,34 +63,46 @@ TARGET_CLASSES = [
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
 
 # Known rooms/studios at Tice Creek Fitness Center.
-# Used to extract specific locations from Mindbody schedule text.
+# Ordered longest-first so "Group Fitness Studio" wins over "Fitness Studio".
 TICE_CREEK_ROOMS = [
-    "Serenity Studio",
-    "Movement Studio",
-    "Fitness Studio",
     "Group Fitness Studio",
+    "Multi-Purpose Room",
+    "Multipurpose Room",
+    "Aerobics Studio",
+    "Aerobic Studio",
+    "Movement Studio",
+    "Serenity Studio",
+    "Serenity Room",
+    "Fitness Studio",
     "Mind Body Studio",
     "Cycling Studio",
+    "Dance Studio",
+    "Fireside Room",
+    "Pickleball Court",
     "Lap Pool",
     "Therapy Pool",
     "Outdoor Pool",
-    "Pool",
-    "Gymnasium",
-    "Gym",
+    "Tice Creek Pool",
     "Court 1", "Court 2", "Court 3", "Court 4",
-    "Pickleball Court",
-    "Multi-Purpose Room",
-    "Multipurpose Room",
+    "Gymnasium",
+    "Pool",
+    "Gym",
 ]
 
-TICE_CREEK_ADDRESS = "Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595"
+TICE_CREEK_ADDRESS = (
+    "Tice Creek Fitness Center, 1751 Tice Creek Dr, "
+    "Walnut Creek, CA 94595"
+)
 
 
 def extract_room(text):
     """Extract a room/studio name from Mindbody schedule text.
 
-    Returns the room name if found, or empty string.
+    Matches against known Tice Creek rooms. Returns the canonical
+    room name if found, or empty string.
     """
+    if not text:
+        return ""
     t = text.lower()
     for room in TICE_CREEK_ROOMS:
         if room.lower() in t:
@@ -685,6 +697,18 @@ def get_enrolled_classes(page):
 
             if not class_name or len(class_name) < 3:
                 continue
+
+            # Strip status suffixes that Mindbody puts in class names
+            # e.g. "Strength and Stretch (From Waitlist - Unconfirmed)"
+            # The ✅/⏳ emoji and (waitlist) suffix we add ourselves
+            # already communicate status — the raw text is redundant
+            # and confusing.
+            class_name = re.sub(
+                r'\s*\(From\s+Waitlist[^)]*\)',
+                '',
+                class_name,
+                flags=re.IGNORECASE,
+            ).strip()
 
             # Extract room from the line (tab fields or full text)
             room = extract_room(line)
