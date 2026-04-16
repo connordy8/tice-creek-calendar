@@ -1,12 +1,41 @@
 name: Auto-Book Classes
 
 on:
-  # Run every 2 hours during waking hours (Pacific)
-  # UTC hours: 15-05 = 7 AM - 9 PM Pacific
+  # Aggressive schedule to catch Mindbody's booking window the moment
+  # it opens. New days become bookable 7 days in advance — hitting
+  # midnight + early morning greatly increases odds of confirmed (vs
+  # waitlisted) spots, especially for popular classes.
+  #
+  # Pacific Time schedule (converted to UTC):
+  #   12:00 AM PT  (07:00 UTC) — catches midnight-open windows
+  #   12:15 AM PT  (07:15 UTC) — retry
+  #   12:30 AM PT  (07:30 UTC) — retry
+  #   01:00 AM PT  (08:00 UTC) — retry
+  #   05:00 AM PT  (12:00 UTC) — catches 5 AM-open windows
+  #   05:15 AM PT  (12:15 UTC) — retry
+  #   05:30 AM PT  (12:30 UTC) — retry
+  #   06:00 AM PT  (13:00 UTC)
+  #   06:30 AM PT  (13:30 UTC)
+  #   07:00 AM PT  (14:00 UTC)
+  #   08:00 AM PT  (15:00 UTC)
+  #   10:00 AM PT  (17:00 UTC)
+  #   12:00 PM PT  (19:00 UTC)
+  #   02:00 PM PT  (21:00 UTC)
+  #   04:00 PM PT  (23:00 UTC)
+  #   06:00 PM PT  (01:00 UTC)
+  #   08:00 PM PT  (03:00 UTC)
+  #   10:00 PM PT  (05:00 UTC)
   schedule:
+    # Midnight flurry (0-1 AM PT)
+    - cron: "0,15,30 7 * * *"
+    - cron: "0 8 * * *"
+    # Early morning flurry (5-7 AM PT) — another common open time
+    - cron: "0,15,30 12 * * *"
+    - cron: "0,30 13 * * *"
+    - cron: "0 14 * * *"
+    # Daytime (every 2 hours, 8 AM - 10 PM PT)
     - cron: "0 15,17,19,21,23 * * *"
     - cron: "0 1,3,5 * * *"
-    - cron: "30 13 * * *"
 
   # Allow manual trigger
   workflow_dispatch:
