@@ -50,5 +50,18 @@
     "source": "Forwarded from Alzheimer's Association (Vanessa Souza)",
     "confidence": 0.9,
     "created": "2026-04-19 13:19"
+  },
+  {
+    "uid": "4796f73f52267cd8",
+    "type": "add",
+    "title": "Ognomy Sleep Telehealth Appointment",
+    "date": "2026-05-04",
+    "start_time": "10:00",
+    "end_time": null,
+    "location": "Virtual/Telehealth",
+    "notes": "Sleep appointment, need photo ID for verification, must be in registered state",
+    "source": "Appointment reminder from Ognomy Sleep",
+    "confidence": 0.95,
+    "created": "2026-04-19 15:41"
   }
 ]
