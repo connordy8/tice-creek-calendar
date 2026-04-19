@@ -24,5 +24,31 @@
     "notes": "One-time schedule change due to special class in aerobics room at normal time. Informal lunch at The Hangout after class.",
     "source": "Carol Lehr schedule change notification",
     "created": "2026-03-30 22:27"
+  },
+  {
+    "uid": "31e40ca8fb155d09",
+    "type": "add",
+    "title": "Eye appointment with Dr. Rahul Raghu",
+    "date": "2026-07-14",
+    "start_time": "14:00",
+    "end_time": "16:00",
+    "location": "East Bay Eye Centers, 5801 Norris Canyon Rd Ste. 200, San Ramon, CA 94583",
+    "notes": "Appointment will involve dilation. Bring completed forms, photo ID, and insurance card(s). Allow 2 hours for appointment.",
+    "source": "East Bay Eye Centers Front Desk confirmation",
+    "confidence": 0.95,
+    "created": "2026-04-19 13:19"
+  },
+  {
+    "uid": "90f98e93b60dd61e",
+    "type": "add",
+    "title": "Early Memory Loss Meetup",
+    "date": "2026-04-21",
+    "start_time": "13:00",
+    "end_time": "14:00",
+    "location": "",
+    "notes": "Open to people with early stage dementia, mild cognitive impairment, or mild memory loss. Casual socializing with trained moderator. Registration required at https://bit.ly/MemoryLossMeetup",
+    "source": "Forwarded from Alzheimer's Association (Vanessa Souza)",
+    "confidence": 0.9,
+    "created": "2026-04-19 13:19"
   }
 ]
