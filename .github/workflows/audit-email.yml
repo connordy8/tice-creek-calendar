@@ -1,0 +1,53 @@
+name: Audit Email Handler
+
+# Re-scan the last N emails (read or unread) in dry-run mode.
+# Does NOT mark them read, does NOT write manual_events.json.
+# Prints a decision table showing what the handler would do.
+# Use this to test classifier/extractor tuning on forwarded emails.
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "How many recent emails to audit"
+        required: true
+        default: "20"
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install pyyaml anthropic
+
+      - name: Audit inbox
+        env:
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python email_handler.py --audit ${{ inputs.count }}
+
+      - name: Upload audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-audit-log
+          path: email_audit.log
+          if-no-files-found: ignore

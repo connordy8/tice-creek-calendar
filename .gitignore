@@ -8,6 +8,10 @@ venv/
 # Debug artifacts (screenshots, HTML dumps)
 debug/
 
+# Email handler audit log (contains email subjects/senders — kept as
+# workflow artifact instead of in git history)
+email_audit.log
+
 # OS
 .DS_Store
 Thumbs.db

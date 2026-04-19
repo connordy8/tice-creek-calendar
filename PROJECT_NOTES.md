@@ -70,7 +70,7 @@ Google Calendar is written to via a service account (key stored in GitHub Secret
 | `scraper.py` | Playwright scraper: Tice Creek fitness + aquatics + Rossmoor entertainment. Has retry logic. |
 | `auto_book.py` | Playwright auto-booker. Logs in to Mindbody, books target classes, marks calendar ✅/⏳. |
 | `gcal_sync.py` | Pushes ICS events into Google Calendar. Has API retry wrapper. |
-| `email_handler.py` | IMAPs Connor's inbox, sends bodies to Claude Sonnet, creates events. Schema-validated. |
+| `email_handler.py` | IMAPs Beth's dedicated inbox (`bethcalendarupdate@gmail.com`). Two-stage Claude pipeline: classifier → extractor. Confidence-gated. See "Email handler" section below. |
 | `notify.py` | Sends failure alerts via SMTP to `connordy@gmail.com`. |
 | `healthcheck.py` | Cron job that asserts the calendar has events in the next 7 days. |
 | `config.yaml` | Target class list, filters, display preferences. Single source of truth for Beth's prefs. |
@@ -109,6 +109,44 @@ Deterministic MD5 hashes so reruns update instead of creating duplicates.
   re.sub(r'\s*\(From\s+Waitlist[^)]*\)', '', name)
   ```
 - The BW widget renders room names inline; we extract them from known tokens: "Serenity Studio", "Aerobics Studio", "Serenity Room", "Aquatics", etc.
+
+---
+
+## Email handler — bulletproof logic
+
+**Inbox:** `bethcalendarupdate@gmail.com` (forward event-related emails here).
+
+**Why this is hard:** Connor has auto-forwarded some senders (e.g. Zumba instructor). Most of those emails have no calendar impact. We must not hallucinate events from pep talks, newsletters, or "hope to see you" notes.
+
+**Two-stage Claude pipeline:**
+
+1. **Classifier** — strict gatekeeper. "Does this email contain a SPECIFIC, ACTIONABLE calendar change?" Biased toward NO. Rejects newsletters, thank-yous, general announcements, vague mentions of dates. Returns `{relevant: bool, reason: str}`.
+2. **Extractor** — only runs if classifier said YES. Returns actions with a `confidence` score (0.0–1.0) and `reasoning`.
+
+**Confidence gates (post-extraction):**
+- `≥ 0.85` → auto-apply
+- `0.60–0.84` → alert Connor for review, do not apply
+- `< 0.60` → drop silently
+
+**Hard sanity checks (all must pass to apply):**
+- Date parses and is within `[today - 1 day, today + 180 days]`
+- Time parses if present
+- For `cancel`/`modify`, `original_class` fuzzy-matches a known class in `KNOWN_CLASS_NAMES`
+- For `add`, title is ≥ 3 chars and not a generic word ("class", "event", etc.)
+- Dedup on (type, title, date, start_time) — skip if already present
+
+**Anti-spam:** the classifier stage means irrelevant emails are dropped BEFORE the extractor runs, so forwarded newsletters don't trigger review alerts.
+
+**Audit log:** every decision (classifier verdict, extraction, final disposition) is appended to `email_audit.log` and uploaded as a workflow artifact (gitignored). Review to tune thresholds.
+
+**Testing:**
+- `python email_handler.py --audit 20` — peek at the last 20 emails (read or unread) without marking them read or modifying state. Prints a decision table.
+- GitHub Actions: run the `Audit Email Handler` workflow manually with a count input. Decision table shown in logs, `email_audit.log` downloadable as an artifact.
+
+**Tuning knobs (in `email_handler.py`):**
+- `CONFIDENCE_APPLY`, `CONFIDENCE_REVIEW` — raise to be more conservative
+- `KNOWN_CLASS_NAMES` — add new class names Beth cares about
+- `MAX_DAYS_OUT` — cap how far in the future an event can be scheduled
 
 ---
 
