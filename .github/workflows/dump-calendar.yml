@@ -36,10 +36,14 @@ jobs:
               scopes=['https://www.googleapis.com/auth/calendar.readonly'])
           svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
 
+          # Start from 00:00 today (UTC, then back 1 day to be safe across TZ)
+          # so we surface earlier-today events that have already passed.
           now = datetime.utcnow()
+          start_of_today = (now - timedelta(hours=36)).replace(
+              hour=0, minute=0, second=0, microsecond=0)
           resp = svc.events().list(
               calendarId=os.environ['GOOGLE_CALENDAR_ID'],
-              timeMin=now.isoformat() + 'Z',
+              timeMin=start_of_today.isoformat() + 'Z',
               timeMax=(now + timedelta(days=7)).isoformat() + 'Z',
               maxResults=100,
               singleEvents=True,
