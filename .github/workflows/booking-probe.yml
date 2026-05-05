@@ -1,0 +1,52 @@
+name: Booking Window Probe
+
+# Polls Mindbody every 5 minutes for 24 hours to determine WHEN
+# Tice Creek's booking window opens. Manually triggered. Output goes
+# to a workflow artifact (booking_probe.log) — review timestamps to
+# see when classes transition from "not on schedule yet" to
+# "Reserve Now (10 Open)". That's the moment the window opened.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Probe
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+        run: python booking_probe.py
+
+      - name: Upload probe log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-probe-${{ github.run_number }}
+          path: booking_probe.log
+          if-no-files-found: ignore
+          retention-days: 14

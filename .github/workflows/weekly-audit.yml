@@ -1,0 +1,48 @@
+name: Weekly Calendar Audit
+
+on:
+  # Sunday 10pm Pacific (Mon 06:00 UTC) — late enough that the week
+  # ahead is fully populated.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days to audit"
+        required: true
+        default: "7"
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install google-auth google-api-python-client pyyaml
+
+      - name: Run audit
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          ALERT_EMAIL: connordy@gmail.com
+        run: python weekly_audit.py --days ${{ inputs.days || '7' }}

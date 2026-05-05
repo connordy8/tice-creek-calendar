@@ -502,7 +502,14 @@ def find_and_book_classes(page, target_date=None):
                     continue
 
             if not clicked_confirm:
-                log.info("  No confirm button found/clicked")
+                # Mindbody changed their flow: clicking "Reserve Now" on
+                # a class with open spots may go straight to confirmation
+                # (no separate confirm button), and clicking on a full
+                # class enrolls in the waitlist immediately. Don't treat
+                # this as failure — we determine outcome from the result
+                # text below.
+                log.info("  No separate confirm step (likely "
+                         "single-click reservation/waitlist)")
 
             # Check result
             result_text = page.inner_text("body").lower()
@@ -520,6 +527,17 @@ def find_and_book_classes(page, target_date=None):
                     "error", "failed", "unable"]):
                 log.warning("  Booking may have failed")
                 skipped.append(class_desc)
+            elif ("welcome" in result_text
+                  and "signed in" in result_text):
+                # Mindbody redirected back to the dashboard. With the new
+                # single-click flow this typically means the action
+                # succeeded (reservation OR waitlist enrollment).
+                # We can't tell from the dashboard alone whether the
+                # class had spots or sent her to waitlist — the calendar
+                # sync (later) determines that from the My Schedule
+                # status. So treat as submitted, not failed.
+                log.info("  Action submitted (dashboard redirect)")
+                booked.append(class_desc)
             else:
                 log.info("  Booking submitted (checking result...)")
                 booked.append(class_desc)

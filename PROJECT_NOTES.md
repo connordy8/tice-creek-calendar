@@ -112,6 +112,54 @@ Deterministic MD5 hashes so reruns update instead of creating duplicates.
 
 ---
 
+## Self-monitoring (so bugs don't sit silently)
+
+The system used to "succeed" green even while quietly dropping classes from Beth's calendar. We've added two passive monitors that alert Connor without requiring him to spot-check.
+
+### `weekly_audit.py` (workflow: `Weekly Calendar Audit`)
+- Runs Sunday 10 PM PT.
+- Scrapes Mindbody for the next 7 days, applies Beth's `include_classes` + `earliest_hour` filter.
+- Pulls her actual Google Calendar.
+- **Diffs the two and emails Connor any preference-matching class that exists at Tice Creek but is NOT on her calendar.**
+- Silent if there are no gaps — no spam on healthy weeks.
+- Manual trigger available with a `days` input.
+
+### `canary.py` (workflow: `Schema Canary`)
+- Runs daily 9 AM PT.
+- Scrapes Mindbody and counts classes per day.
+- Trips an alert if:
+  - Any weekday returns < 5 total classes (Tice Creek normally has 10+) → suggests scraper broken or Mindbody schema changed
+  - The whole week returns < 5 Beth-preference matches → suggests `include_classes` filter is out of sync with current Mindbody class names
+- This catches the silent-drop failure mode where workflows finish green but scrape nothing useful.
+
+### `booking_probe.py` (workflow: `Booking Window Probe`)
+- Manual trigger only.
+- Polls Mindbody for day-7 and day-8 classes and logs every (Reserved, Open) count with a timestamp.
+- Run frequently across a 24h period to determine **exactly when Tice Creek's booking window opens** for each class.
+- Output uploaded as a workflow artifact — review timestamps to find the moment classes flip from "not yet on schedule" to "Reserve Now (10 Open)".
+- Use this data to tighten the auto-book cron schedule so Beth wins booking races.
+
+---
+
+## Booking races (waitlist vs. confirmed)
+
+**Symptom:** Beth ends up on waitlists for popular classes (Aquacise, Functional Fitness, Pilates Mat).
+
+**Diagnosis:** Classes hit capacity within minutes/hours of opening. Auto-book runs hit the booking window AFTER it has already filled.
+
+**Why this is hard:** We don't authoritatively know when Tice Creek opens each class. Plausible rules:
+- "Midnight 7 days before" (cron at 12:00–12:30 AM PT covers this)
+- "Exactly 7 days before to the second" (need cron at the class's actual time on day-7)
+- "6:30 AM 7 days before" (cron at 5–7 AM PT covers this)
+
+**Current strategy:** Cast a wide net — 18+ runs/day with flurries at 12 AM and 5–7 AM PT. Plus a daytime sweep every 2 hours for cancellations.
+
+**Next step:** Connor manually triggers `Booking Window Probe` workflow. Review the artifact — when did each class become bookable? Then tighten cron to fire at +/- 1 minute around the actual opening.
+
+**Mindbody UI quirk (fixed Apr 2026):** The auto-booker used to log "Booking may have failed" when it didn't see a separate "Confirm" button after clicking Reserve. In fact, Mindbody now does single-click reservation/waitlist with a redirect to the dashboard. The new code recognizes the dashboard redirect as success.
+
+---
+
 ## Email handler — bulletproof logic
 
 **Inbox:** `bethcalendarupdate@gmail.com` (forward event-related emails here).
