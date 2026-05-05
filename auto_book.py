@@ -97,6 +97,78 @@ TICE_CREEK_ADDRESS = (
 )
 
 
+# Module-level lookup: (iso_date, time_str_lower, name_lower) →
+# {"instructor": ..., "room": ...}
+# Populated by find_and_book_classes() from the cleanly-bounded daily
+# schedule scrape (Reserve buttons), then read by the event builder
+# to override the messier My-Schedule parser data.
+_clean_class_lookup = {}
+
+
+def parse_row_fields(row_text):
+    """Parse a daily-schedule row into structured fields.
+
+    Mindbody rows look like:
+        '1:10 pm PDT | (24 Reserved, 0 Open) | Posture, Balance, Core
+         and Strength | Terry Hummel | Serenity Studio | 50 minutes'
+    Returns dict with: time, class_name, instructor, room, duration.
+    Missing fields come back empty.
+    """
+    out = {"time": "", "class_name": "", "instructor": "",
+           "room": "", "duration": ""}
+    if not row_text:
+        return out
+    parts = [p.strip() for p in row_text.split("|") if p.strip()]
+    # Find the time field (first one matching HH:MM AM/PM)
+    time_idx = None
+    for i, p in enumerate(parts):
+        if re.search(r'\d{1,2}:\d{2}\s*[AaPp][Mm]', p):
+            time_idx = i
+            out["time"] = re.search(
+                r'(\d{1,2}:\d{2}\s*[AaPp][Mm])',
+                p, re.IGNORECASE).group(1).strip()
+            break
+    if time_idx is None:
+        return out
+    # Skip count field "(X Reserved, Y Open)"
+    nxt = time_idx + 1
+    if nxt < len(parts) and "Reserved" in parts[nxt]:
+        nxt += 1
+    # Class name
+    if nxt < len(parts):
+        out["class_name"] = parts[nxt]
+        nxt += 1
+    # Instructor (looks like a name — proper-case words, no digits,
+    # not a known room)
+    if nxt < len(parts):
+        cand = parts[nxt]
+        if (cand.upper() != "CLUB CLASS"
+                and not extract_room(cand)
+                and not re.search(r'\d', cand)):
+            out["instructor"] = cand
+            nxt += 1
+        elif cand.upper() == "CLUB CLASS":
+            # Skip "CLUB CLASS" placeholder
+            nxt += 1
+    # Room
+    if nxt < len(parts):
+        room = extract_room(parts[nxt])
+        if room:
+            out["room"] = room
+            nxt += 1
+        elif nxt < len(parts) - 1:
+            # Maybe room came AFTER duration? Try the next one
+            room = extract_room(parts[nxt + 1] if nxt + 1 < len(parts)
+                                else "")
+            if room:
+                out["room"] = room
+    # Duration
+    if nxt < len(parts):
+        if "minute" in parts[nxt].lower() or "hour" in parts[nxt].lower():
+            out["duration"] = parts[nxt]
+    return out
+
+
 def extract_room(text):
     """Extract a room/studio name from Mindbody schedule text.
 
@@ -379,10 +451,23 @@ def find_and_book_classes(page, target_date=None):
     log.info("Total: {} reserve/sign-up buttons across all locations".format(
         len(reservable)))
 
+    # Populate the clean class lookup from the daily-schedule scrape.
+    # This is the source of truth for instructor + room — the My
+    # Schedule parser is messy and frequently gets these wrong.
+    target_iso = (target_date or datetime.now()).strftime("%Y-%m-%d")
     for entry in reservable:
         log.info("  Button {}: {} — row: {}".format(
             entry["idx"], entry["btnText"],
             entry.get("rowText", "")[:150]))
+        fields = parse_row_fields(entry.get("rowText", ""))
+        if fields.get("time") and fields.get("class_name"):
+            key = (target_iso,
+                   fields["time"].lower().strip(),
+                   fields["class_name"].lower().strip())
+            _clean_class_lookup[key] = {
+                "instructor": fields["instructor"],
+                "room": fields["room"],
+            }
 
     # Also get the full page text for club class detection
     body_text = page.inner_text("body")
@@ -730,15 +815,43 @@ def get_enrolled_classes(page):
                 flags=re.IGNORECASE,
             ).strip()
 
-            # Extract room from the line (tab fields or full text)
+            # Extract room from the line (tab fields or full text).
+            # IMPORTANT: bound the surrounding-line search to stop at
+            # the next class entry (next time pattern). Otherwise we
+            # pick up rooms from neighboring classes — that's the bug
+            # that put 'Gymnasium' on the Posture/Balance event when
+            # the Functional Fitness class right above it lists
+            # 'Gymnasium'.
             room = extract_room(line)
-            # Also check surrounding lines for room info
+            instructor = ""
+            time_pattern = re.compile(
+                r'\d{1,2}:\d{2}\s*[AaPp][Mm]')
             if not room:
-                for j in range(
-                        max(0, i - 1), min(i + 4, len(lines))):
-                    room = extract_room(lines[j])
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    nxt = lines[j].strip()
+                    # Stop scanning if we hit another class's time line
+                    if time_pattern.search(nxt) and j > i + 1:
+                        break
+                    room = extract_room(nxt)
                     if room:
                         break
+
+            # Extract instructor: usually the line right after the
+            # class name, looks like "Terry Hummel" — proper-case name
+            # with no digits. Don't grab class names or times.
+            for j in range(i + 1, min(i + 4, len(lines))):
+                cand = lines[j].strip()
+                if time_pattern.search(cand):
+                    break
+                # 2-3 word proper-case name, no digits, no special
+                # markers
+                if (re.match(r'^[A-Z][a-zA-Z\.]+(\s+[A-Z][a-zA-Z\.]+){1,2}$',
+                             cand)
+                        and not extract_room(cand)
+                        and "Cancel" not in cand
+                        and len(cand) <= 40):
+                    instructor = cand
+                    break
 
             entries.append({
                 "name": class_name,
@@ -747,6 +860,7 @@ def get_enrolled_classes(page):
                 "is_waitlist": is_waitlist_section,
                 "is_club": False,
                 "room": room,
+                "instructor": instructor,
                 "raw": line[:200],
                 "keywords": [],
             })
@@ -969,6 +1083,38 @@ def sync_enrolled_to_gcal(enrolled_classes):
         name = cls.get("name", "Unknown Class")
         is_waitlist = cls.get("is_waitlist", False)
         room = cls.get("room", "")
+        instructor = cls.get("instructor", "")
+
+        # Cross-reference: the daily-schedule scrape has clean
+        # instructor + room data with proper row boundaries. Look up
+        # the matching entry by date + time, with fuzzy class-name
+        # matching (the My-Schedule name is "Posture, Balance, Core
+        # and Strength" but a target-keyword name might be "Posture
+        # Balance").
+        clean = None
+        ts_lower = time_str.lower().strip()
+        name_lower = name.lower()
+        # Try exact match first
+        clean = _clean_class_lookup.get(
+            (date_str, ts_lower, name_lower))
+        # Then fuzzy: same date+time, name overlaps significantly
+        if not clean:
+            name_words = set(re.findall(r'[a-z]+', name_lower))
+            for (d, t, n), data in _clean_class_lookup.items():
+                if d != date_str or t != ts_lower:
+                    continue
+                cn_words = set(re.findall(r'[a-z]+', n))
+                if name_words & cn_words:
+                    # Need at least one shared significant word
+                    shared = name_words & cn_words
+                    if any(len(w) >= 4 for w in shared):
+                        clean = data
+                        break
+        if clean:
+            if clean.get("room"):
+                room = clean["room"]
+            if clean.get("instructor"):
+                instructor = clean["instructor"]
 
         is_water = any(
             w in name.lower() for w in ["aqua", "water", "swim"])
@@ -983,6 +1129,15 @@ def sync_enrolled_to_gcal(enrolled_classes):
 
         is_club = cls.get("is_club", False)
 
+        # Build instructor + room block for the description
+        details_lines = []
+        if instructor:
+            details_lines.append("Instructor: {}".format(instructor))
+        if room:
+            details_lines.append("Room: {}".format(room))
+        details_block = (
+            "\n".join(details_lines) + "\n\n" if details_lines else "")
+
         if is_waitlist:
             summary = "\u23f3 {} (waitlist)".format(name)
             description = (
@@ -990,25 +1145,28 @@ def sync_enrolled_to_gcal(enrolled_classes):
                 "The system checks every 2 hours \u2014 if a spot opens, "
                 "she'll be moved to confirmed and this will update "
                 "to \u2705.\n\n"
+                "{}"
                 "Managed by Beth's Calendar Bot."
-            )
-            color_id = "2"  # Single color for all workout classes (was banana yellow)
+            ).format(details_block)
+            color_id = "2"
         elif is_club:
             summary = "{} {} (drop-in)".format(emoji, name)
             description = (
                 "No reservation needed \u2014 Beth can just show up!\n"
                 "This is an open club class.\n\n"
+                "{}"
                 "Managed by Beth's Calendar Bot."
-            )
-            color_id = "2"  # Sage (green) — open/confirmed
+            ).format(details_block)
+            color_id = "2"
         else:
             summary = "{} {} \u2705".format(emoji, name)
             description = (
                 "Beth is CONFIRMED for this class!\n"
                 "Reserved on Mindbody (auto-booked).\n\n"
+                "{}"
                 "Managed by Beth's Calendar Bot."
-            )
-            color_id = "2"  # Sage (green) — confirmed
+            ).format(details_block)
+            color_id = "2"
 
         # Build location string safely
         try:
