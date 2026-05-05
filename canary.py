@@ -37,6 +37,72 @@ from weekly_audit import scrape_week, matches_beth, EARLIEST_HOUR  # noqa
 WEEKDAY_MIN_CLASSES = 5  # Tice Creek normally has 10+ per weekday
 WEEK_MIN_BETH_MATCHES = 5  # Across a full week she normally has 10+
 
+# Coverage check: every day in this window should have >= 1 calendar
+# event. Empty days = something is wrong (scraper missed, auto-book
+# silently failed, etc.). Tice Creek occasionally has dark days but
+# they're rare — if more than DAYS_EMPTY_TOLERANCE days are empty in
+# the next 14, that's a red flag.
+COVERAGE_DAYS = 14
+DAYS_EMPTY_TOLERANCE = 1  # max consecutive empty days allowed
+
+
+def _check_calendar_coverage():
+    """Pull Beth's calendar and assert every day has at least 1 event.
+
+    Returns a list of alert strings (empty if all good).
+    """
+    import json
+    from datetime import timezone
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    creds = service_account.Credentials.from_service_account_info(
+        json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_KEY"]),
+        scopes=["https://www.googleapis.com/auth/calendar.readonly"])
+    svc = build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    resp = svc.events().list(
+        calendarId=os.environ["GOOGLE_CALENDAR_ID"],
+        timeMin=start.isoformat(),
+        timeMax=(start + timedelta(days=COVERAGE_DAYS)).isoformat(),
+        maxResults=500,
+        singleEvents=True,
+        orderBy="startTime",
+    ).execute()
+
+    by_date = {}
+    for e in resp.get("items", []):
+        dt = (e.get("start", {}).get("dateTime")
+              or e.get("start", {}).get("date") or "")
+        if dt:
+            by_date.setdefault(dt[:10], []).append(
+                e.get("summary", ""))
+
+    today = datetime.now().date()
+    empty_days = []
+    for offset in range(COVERAGE_DAYS):
+        d = today + timedelta(days=offset)
+        ds = d.strftime("%Y-%m-%d")
+        weekday = d.strftime("%A")
+        n = len(by_date.get(ds, []))
+        log.info("  cal coverage {} {} → {} events".format(
+            weekday, ds, n))
+        if n == 0:
+            empty_days.append("{} {}".format(weekday, ds))
+
+    alerts = []
+    if len(empty_days) > DAYS_EMPTY_TOLERANCE:
+        alerts.append(
+            "Beth's calendar has {} empty day(s) in the next {} days: "
+            "{}. Every day should have at least one event (class, "
+            "appointment, or drop-in). Check that auto-book is "
+            "running and matching her preferences correctly."
+            .format(len(empty_days), COVERAGE_DAYS,
+                    ", ".join(empty_days)))
+    return alerts
+
 
 def main():
     log.info("=" * 60)
@@ -85,6 +151,17 @@ def main():
             "(expected >= {}). The scraper may be broken or the "
             "include_classes filter may be out of sync with current "
             "Mindbody class names.".format(beth_count, WEEK_MIN_BETH_MATCHES))
+
+    # Coverage check: every day in next 14 days should have >= 1 event
+    log.info("")
+    log.info("Calendar coverage check (next {} days)...".format(
+        COVERAGE_DAYS))
+    try:
+        coverage_alerts = _check_calendar_coverage()
+        alerts.extend(coverage_alerts)
+    except Exception as e:
+        log.warning("Coverage check failed: {}".format(e))
+        alerts.append("Calendar coverage check failed: {}".format(e))
 
     if alerts:
         msg = "\n\n".join(alerts)

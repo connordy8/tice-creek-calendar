@@ -1,9 +1,12 @@
 name: Schema Canary
 
 on:
-  # Daily at 9am Pacific (16:00 UTC) — after the morning sync settles.
+  # Twice daily: 9 AM PT and 9 PM PT (16:00 and 04:00 UTC). Catches
+  # both morning gaps (post-overnight booking) and evening gaps
+  # (after the daytime sweep).
   schedule:
     - cron: "0 16 * * *"
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -37,4 +40,8 @@ jobs:
           CALENDAR_EMAIL: bethcalendarupdate@gmail.com
           CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
           ALERT_EMAIL: connordy@gmail.com
-        run: python canary.py
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          pip install google-auth google-api-python-client
+          python canary.py
