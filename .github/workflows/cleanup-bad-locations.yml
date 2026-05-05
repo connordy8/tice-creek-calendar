@@ -1,0 +1,89 @@
+name: Cleanup Mismatched Class Locations
+
+# Deletes events where the class type and location don't match
+# (e.g., Zumba scheduled in the Pool — Zumba is dance fitness,
+# only aquatics classes go in the Pool).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install google-auth google-api-python-client
+      - name: Delete mismatched events
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          python3 <<'PY'
+          import json, os
+          from datetime import datetime, timedelta, timezone
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']),
+              scopes=['https://www.googleapis.com/auth/calendar'])
+          svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+          cal = os.environ['GOOGLE_CALENDAR_ID']
+
+          # Mismatched patterns: title fragment vs location it should NOT be at
+          BAD_COMBOS = [
+              # Land-based classes that should never be in Pool
+              ("zumba", "pool"),
+              ("ujam", "pool"),
+              ("yoga", "pool"),
+              ("pilates", "pool"),
+              ("tai chi", "pool"),
+              ("stretch", "pool"),
+              ("posture", "pool"),
+              ("forever fit", "pool"),
+              ("functional", "pool"),
+              # Pool-based classes shouldn't be in studios
+              ("aqua:", "studio"),
+              ("aquacise", "studio"),
+              ("deep water", "studio"),
+          ]
+
+          now = datetime.now(timezone.utc)
+          resp = svc.events().list(
+              calendarId=cal,
+              timeMin=(now - timedelta(days=1)).isoformat(),
+              timeMax=(now + timedelta(days=60)).isoformat(),
+              maxResults=500,
+              singleEvents=True,
+          ).execute()
+
+          deleted = 0
+          for e in resp.get('items', []):
+              summary = (e.get('summary') or '').lower()
+              location = (e.get('location') or '').lower()
+              # Also check first line of description (some scrapers
+              # encode location there)
+              desc = (e.get('description') or '').lower()
+              hay = summary + " | " + location + " | " + desc
+              for title_frag, bad_loc in BAD_COMBOS:
+                  if title_frag in summary and bad_loc in hay:
+                      try:
+                          svc.events().delete(
+                              calendarId=cal, eventId=e['id']).execute()
+                          deleted += 1
+                          dt = e.get('start', {}).get('dateTime', '')[:16]
+                          print(f"Deleted: {dt} {e.get('summary', '?')} "
+                                f"(location: {e.get('location', '?')})")
+                      except Exception as ex:
+                          print(f"Failed: {ex}")
+                      break
+
+          print(f"\nTotal deleted: {deleted}")
+          PY

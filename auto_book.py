@@ -992,7 +992,7 @@ def sync_enrolled_to_gcal(enrolled_classes):
                 "to \u2705.\n\n"
                 "Managed by Beth's Calendar Bot."
             )
-            color_id = "5"  # Banana (yellow) — waitlisted
+            color_id = "2"  # Single color for all workout classes (was banana yellow)
         elif is_club:
             summary = "{} {} (drop-in)".format(emoji, name)
             description = (
