@@ -165,6 +165,11 @@ def main():
 
     if alerts:
         msg = "\n\n".join(alerts)
+        msg += (
+            "\n\n---\nNOTE: This canary already ran scraper.py + "
+            "auto_book.py before this check. If you're seeing this "
+            "alert, automated self-heal couldn't fix the issue and "
+            "manual intervention is needed.")
         log.warning("CANARY TRIPPED:\n{}".format(msg))
         try:
             from notify import send_alert

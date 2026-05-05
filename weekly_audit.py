@@ -68,36 +68,35 @@ def matches_beth(name):
 
 
 # ---------------------------------------------------------------------
-# Mindbody scrape — re-uses scraper.py if available
+# Mindbody scrape — parse the FRESH ICS (the workflow regenerates this
+# every run before the audit, so it's always current)
 # ---------------------------------------------------------------------
+ICS_MAX_AGE_HOURS = 6  # refuse to use older data — better to error
+
+
 def scrape_week(days):
-    """Run the existing scraper to get classes for the next `days` days.
+    """Read scraper output. Refuses to use stale data — better to fail
+    loudly than alert on month-old ICS contents.
 
     Returns a list of dicts: {date, start_time, name, location}.
     """
-    try:
-        import scraper  # noqa: F401
-    except Exception as e:
-        log.error("Could not import scraper: {}".format(e))
-        return []
+    ics = Path(__file__).parent / "docs" / "beth-calendar.ics"
+    if not ics.exists():
+        raise RuntimeError(
+            "docs/beth-calendar.ics not found. Run scraper.py first "
+            "(the weekly-audit workflow does this automatically).")
 
-    # The scraper's main() is the entry point but it writes ICS; we
-    # want the structured data. Try common function names.
-    for fn_name in ("scrape_all_classes", "fetch_all_classes",
-                    "get_all_classes", "collect_classes"):
-        fn = getattr(scraper, fn_name, None)
-        if fn:
-            log.info("Using scraper.{}() for class data".format(fn_name))
-            try:
-                return fn(days)
-            except TypeError:
-                try:
-                    return fn()
-                except Exception as e:
-                    log.warning("{} failed: {}".format(fn_name, e))
+    age_h = (datetime.now().timestamp()
+             - ics.stat().st_mtime) / 3600.0
+    log.info("ICS file age: {:.1f}h (max allowed: {}h)".format(
+        age_h, ICS_MAX_AGE_HOURS))
+    if age_h > ICS_MAX_AGE_HOURS:
+        raise RuntimeError(
+            "docs/beth-calendar.ics is {:.1f}h old — refusing to "
+            "audit against stale data. The workflow should run "
+            "scraper.py before the audit. Fix the workflow ordering."
+            .format(age_h))
 
-    # Fall back: parse the most recent ICS we generated
-    log.info("Falling back to parsing docs/beth-calendar.ics")
     return _parse_ics_for_classes()
 
 
@@ -225,9 +224,21 @@ def format_report(gaps):
     lines.append(
         "These classes are on the Tice Creek schedule and match "
         "Beth's preferences but were not found on her Google Calendar.")
+    lines.append("")
     lines.append(
-        "Action: investigate scraper.py / config.yaml include_classes "
-        "to see why they were filtered out.")
+        "IMPORTANT: This audit already ran scraper.py + auto_book.py "
+        "BEFORE producing this report. If you're seeing gaps here, "
+        "automated self-heal couldn't close them — manual "
+        "investigation is needed.")
+    lines.append("")
+    lines.append("Likely causes worth checking:")
+    lines.append("  - Mindbody UI changed (look at the auto-book log "
+                 "for 'No matching button' / page errors)")
+    lines.append("  - The class is full and Beth's already on the "
+                 "waitlist (waitlist may not be writing to calendar)")
+    lines.append("  - A keyword in include_classes matches the Tice "
+                 "Creek class name but auto_book.py's TARGET_CLASSES "
+                 "doesn't (or vice versa)")
     return "\n".join(lines)
 
 

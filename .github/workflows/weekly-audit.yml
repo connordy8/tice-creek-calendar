@@ -1,5 +1,15 @@
 name: Weekly Calendar Audit
 
+# Self-healing audit:
+#   1. Run scraper.py to refresh Mindbody data into docs/beth-calendar.ics
+#   2. Trigger auto-book.yml to attempt fresh bookings (waits for it to finish)
+#   3. Run weekly_audit.py to compare scraper data vs Beth's calendar
+#   4. If gaps remain AFTER step 2, then alert (manual fix needed)
+#   5. If first audit pass found gaps but step 2 closed them, no alert
+#
+# This means the user only ever sees an alert when the system has
+# tried and failed to self-heal.
+
 on:
   # Sunday 10pm Pacific (Mon 06:00 UTC) — late enough that the week
   # ahead is fully populated.
@@ -13,7 +23,8 @@ on:
         default: "7"
 
 permissions:
-  contents: read
+  contents: write   # scraper.py commits its output ICS
+  actions: write    # to dispatch the auto-book workflow
 
 env:
   TZ: America/Los_Angeles
@@ -21,7 +32,7 @@ env:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -36,8 +47,31 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
           pip install google-auth google-api-python-client pyyaml
 
+      # ── Self-heal step 1: refresh scraper data ──
+      - name: Refresh Mindbody scrape
+        env:
+          MINDBODY_USERNAME: ${{ secrets.MINDBODY_USERNAME }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+        run: python scraper.py || echo "scraper failed — audit will fail loudly below"
+        continue-on-error: true
+
+      # ── Self-heal step 2: run auto-book inline to fill gaps ──
+      # We run it in this same job (not via dispatch) so the audit
+      # below reflects the post-self-heal state of the calendar.
+      - name: Run auto-book inline to attempt missing bookings
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: python auto_book.py 14 || echo "auto-book failed — audit will report what's missing"
+        continue-on-error: true
+
+      # ── Run the audit ──
       - name: Run audit
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}

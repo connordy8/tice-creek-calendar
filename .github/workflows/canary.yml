@@ -1,16 +1,21 @@
 name: Schema Canary
 
+# Self-healing canary:
+#   1. Run a probe pass (scrape + coverage check)
+#   2. If gaps detected, auto-trigger sync + auto-book INLINE
+#   3. Re-run the canary check
+#   4. Only alert if gaps persist after self-heal
+
 on:
-  # Twice daily: 9 AM PT and 9 PM PT (16:00 and 04:00 UTC). Catches
-  # both morning gaps (post-overnight booking) and evening gaps
-  # (after the daytime sweep).
+  # Twice daily: 9 AM PT and 9 PM PT (16:00 and 04:00 UTC).
   schedule:
     - cron: "0 16 * * *"
     - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 env:
   TZ: America/Los_Angeles
@@ -18,7 +23,7 @@ env:
 jobs:
   canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -33,8 +38,32 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pyyaml
+          playwright install chromium
+          playwright install-deps chromium
+          pip install google-auth google-api-python-client pyyaml
 
+      # ── Self-heal: refresh scrape + run auto-book inline ──
+      # Runs unconditionally so the canary always evaluates a
+      # post-self-heal state. Cheaper to do this than to first
+      # detect gaps and then act — and it keeps Beth's calendar
+      # fresh even when there are no gaps.
+      - name: Refresh Mindbody scrape
+        env:
+          MINDBODY_USERNAME: ${{ secrets.MINDBODY_USERNAME }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+        run: python scraper.py
+        continue-on-error: true
+
+      - name: Auto-book any missing classes
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: python auto_book.py 14
+        continue-on-error: true
+
+      # ── Now check that everything is healthy ──
       - name: Run canary
         env:
           CALENDAR_EMAIL: bethcalendarupdate@gmail.com
@@ -42,6 +71,4 @@ jobs:
           ALERT_EMAIL: connordy@gmail.com
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
-        run: |
-          pip install google-auth google-api-python-client
-          python canary.py
+        run: python canary.py
