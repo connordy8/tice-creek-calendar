@@ -86,10 +86,3 @@ jobs:
           path: debug/
           retention-days: 3
 
-      - name: Send failure alert
-        if: failure()
-        env:
-          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
-          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
-          ALERT_EMAIL: connordy@gmail.com
-        run: python notify.py --alert "Auto-Book" "Class booking workflow failed. Beth's classes may not be reserved."

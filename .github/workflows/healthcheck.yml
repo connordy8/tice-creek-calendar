@@ -35,10 +35,3 @@ jobs:
           ALERT_EMAIL: connordy@gmail.com
         run: python healthcheck.py
 
-      - name: Send failure alert
-        if: failure()
-        env:
-          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
-          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
-          ALERT_EMAIL: connordy@gmail.com
-        run: python notify.py --alert "Healthcheck" "Calendar healthcheck detected issues. Beth's calendar may be stale or empty."

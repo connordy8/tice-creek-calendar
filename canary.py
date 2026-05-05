@@ -37,13 +37,13 @@ from weekly_audit import scrape_week, matches_beth, EARLIEST_HOUR  # noqa
 WEEKDAY_MIN_CLASSES = 5  # Tice Creek normally has 10+ per weekday
 WEEK_MIN_BETH_MATCHES = 5  # Across a full week she normally has 10+
 
-# Coverage check: every day in this window should have >= 1 calendar
-# event. Empty days = something is wrong (scraper missed, auto-book
-# silently failed, etc.). Tice Creek occasionally has dark days but
-# they're rare — if more than DAYS_EMPTY_TOLERANCE days are empty in
-# the next 14, that's a red flag.
-COVERAGE_DAYS = 14
-DAYS_EMPTY_TOLERANCE = 1  # max consecutive empty days allowed
+# Coverage check: every day WITHIN MINDBODY'S BOOKING WINDOW (next 7
+# days) should have >= 1 calendar event. We don't check beyond 7 days
+# because Tice Creek's reservation window hasn't opened — those days
+# WILL fill in as the window slides forward. Alerting about days
+# beyond the window would produce false positives every single day.
+COVERAGE_DAYS = 7
+DAYS_EMPTY_TOLERANCE = 0  # any empty day in the booking window = red flag
 
 
 def _check_calendar_coverage():

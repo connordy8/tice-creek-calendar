@@ -71,14 +71,6 @@ jobs:
           path: debug/
           retention-days: 7
 
-      - name: Send failure alert
-        if: failure()
-        env:
-          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
-          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
-          ALERT_EMAIL: connordy@gmail.com
-        run: python notify.py --alert "Daily Sync" "Scraper or email handler failed. Check debug artifacts."
-
       - name: Commit and push updated calendar
         run: |
           git config user.name "github-actions[bot]"

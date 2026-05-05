@@ -46,14 +46,6 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python email_handler.py
 
-      - name: Send failure alert
-        if: failure()
-        env:
-          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
-          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
-          ALERT_EMAIL: connordy@gmail.com
-        run: python notify.py --alert "Email Handler" "Email check failed. Manual calendar updates may be missed."
-
       - name: Commit email updates if any
         run: |
           git config user.name "github-actions[bot]"
