@@ -1,0 +1,38 @@
+name: 14-Day Calendar Dump
+
+on: workflow_dispatch
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install google-auth google-api-python-client
+      - name: Dump
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: |
+          python3 -c "
+          import json, os
+          from datetime import datetime, timedelta, timezone
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          creds = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY']),
+              scopes=['https://www.googleapis.com/auth/calendar.readonly'])
+          svc = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+          now = datetime.now(timezone.utc)
+          start = (now - timedelta(hours=24)).replace(hour=0,minute=0,second=0,microsecond=0)
+          resp = svc.events().list(
+              calendarId=os.environ['GOOGLE_CALENDAR_ID'],
+              timeMin=start.isoformat(),
+              timeMax=(now+timedelta(days=14)).isoformat(),
+              maxResults=500, singleEvents=True, orderBy='startTime').execute()
+          for e in resp.get('items',[]):
+              dt = e.get('start',{}).get('dateTime', e.get('start',{}).get('date',''))
+              print(f'{dt:30s}  {e.get(\"summary\",\"\")}')
+          print(f'Total: {len(resp.get(\"items\",[]))}')"
