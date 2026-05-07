@@ -473,6 +473,17 @@ def find_and_book_classes(page, target_date=None):
     body_text = page.inner_text("body")
 
     # For each reserve button, check if it matches a target class
+    # Track time slots Beth is already booking on this day so we don't
+    # book overlapping classes. Each entry: (start_minutes, end_minutes).
+    # Default class duration is 50 min if we can't determine it.
+    booked_intervals = []
+
+    def _overlaps(start_min, end_min):
+        for s, e in booked_intervals:
+            if start_min < e and end_min > s:
+                return True
+        return False
+
     for entry in reservable:
         ctx = entry.get("rowText", "").lower()
 
@@ -499,17 +510,46 @@ def find_and_book_classes(page, target_date=None):
         if class_time.hour < earliest:
             continue
 
+        # Conflict check — never book two overlapping classes.
+        # Pull duration from the row text (e.g. '50 minutes',
+        # '1 hour & 30 minutes'). Default 60 min for safety.
+        duration_min = 60
+        dm = re.search(r'(\d+)\s*hours?', ctx)
+        dh = re.search(r'(\d+)\s*minutes?', ctx)
+        if dm and dh:
+            duration_min = int(dm.group(1)) * 60 + int(dh.group(1))
+        elif dm:
+            duration_min = int(dm.group(1)) * 60
+        elif dh:
+            duration_min = int(dh.group(1))
+        start_min = class_time.hour * 60 + class_time.minute
+        end_min = start_min + duration_min
+        if _overlaps(start_min, end_min):
+            log.info(
+                "  SKIP {} at {} — conflicts with already-booked "
+                "class on this day"
+                .format(" ".join(matched_target["keywords"]).title(),
+                        time_str))
+            continue
+
         class_desc = "{} at {}".format(
             " ".join(matched_target["keywords"]).title(), time_str)
         log.info("Matched: {} (button {})".format(
             class_desc, entry["idx"]))
 
-        # Check if already enrolled
+        # Reserve this time slot so subsequent matches don't overlap
+        booked_intervals.append((start_min, end_min))
+
+        # Check if already enrolled — but still reserve the time slot
+        # so we don't book a different class that conflicts with it.
         if any(x in ctx for x in [
                 "registered!", "cancel my", "you're in",
                 "you are enrolled"]):
             log.info("  Already enrolled, skipping")
             already_booked.append(class_desc)
+            # Note: booked_intervals already includes this slot from
+            # the conflict check above, so any later overlapping
+            # candidate will be filtered out.
             continue
 
         # Click the reserve button using the data attribute we set
