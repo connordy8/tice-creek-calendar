@@ -64,6 +64,11 @@ TARGET_CLASSES = [
 
 DEFAULT_EARLIEST_HOUR = 11  # Most classes: 11 AM or later
 
+# When True (default now): scrape and list classes on Beth's calendar
+# but DO NOT click the Reserve button. Beth signs up manually.
+BOOKING_DISABLED = os.environ.get(
+    "BOOKING_DISABLED", "true").lower() in ("1", "true", "yes")
+
 # Known rooms/studios at Tice Creek Fitness Center.
 # Ordered longest-first so "Group Fitness Studio" wins over "Fitness Studio".
 TICE_CREEK_ROOMS = [
@@ -423,6 +428,10 @@ def find_and_book_classes(page, target_date=None):
     booked = []
     skipped = []
     already_booked = []
+    # Classes that match Beth's preferences. When BOOKING_DISABLED,
+    # we collect these to display on her calendar as "available" so
+    # she can manually sign up.
+    available_classes = []
     all_reservable = []
 
     # Check each location (fitness + aquatics)
@@ -539,6 +548,31 @@ def find_and_book_classes(page, target_date=None):
 
         # Reserve this time slot so subsequent matches don't overlap
         booked_intervals.append((start_min, end_min))
+
+        # Always collect the matched class details — needed both for
+        # 'available' calendar listings AND for tracking what we'd
+        # book if booking were enabled.
+        fields = parse_row_fields(entry.get("rowText", ""))
+        available_classes.append({
+            "name": fields.get("class_name") or " ".join(
+                matched_target["keywords"]).title(),
+            "date": target_date.strftime("%Y-%m-%d"),
+            "time": time_str,
+            "instructor": fields.get("instructor", ""),
+            "room": fields.get("room", ""),
+            "duration_min": duration_min,
+            "is_available": True,
+            "is_waitlist": False,
+            "is_club": False,
+            "raw": entry.get("rowText", "")[:200],
+            "keywords": matched_target["keywords"],
+        })
+
+        # If booking is disabled, we just list the class. No click.
+        if BOOKING_DISABLED:
+            log.info("  LIST-ONLY mode: not clicking Reserve "
+                     "(Beth will sign up herself)")
+            continue
 
         # Check if already enrolled — but still reserve the time slot
         # so we don't book a different class that conflicts with it.
@@ -707,7 +741,7 @@ def find_and_book_classes(page, target_date=None):
                 except ValueError:
                     pass
 
-    return booked, skipped, already_booked
+    return booked, skipped, already_booked, available_classes
 
 
 def get_enrolled_classes(page):
@@ -1168,6 +1202,15 @@ def sync_enrolled_to_gcal(enrolled_classes):
         eid = "{}{}".format(BOOKED_EVENT_PREFIX, h)
 
         is_club = cls.get("is_club", False)
+        is_available = cls.get("is_available", False)
+
+        # Use the matched class's actual duration if known
+        try:
+            dur = int(cls.get("duration_min") or 50)
+            if dur > 0:
+                end = start + timedelta(minutes=dur)
+        except (TypeError, ValueError):
+            pass
 
         # Build instructor + room block for the description
         details_lines = []
@@ -1178,7 +1221,20 @@ def sync_enrolled_to_gcal(enrolled_classes):
         details_block = (
             "\n".join(details_lines) + "\n\n" if details_lines else "")
 
-        if is_waitlist:
+        if is_available:
+            # Beth is NOT signed up — calendar lists this so she can
+            # decide and sign up herself if she wants to attend.
+            summary = "\U0001f4cb {} (available)".format(name)
+            description = (
+                "AVAILABLE class at Tice Creek.\n"
+                "Beth is NOT signed up. To attend, she needs to "
+                "reserve a spot herself via the Mindbody app or "
+                "Tice Creek website.\n\n"
+                "{}"
+                "Managed by Beth's Calendar Bot."
+            ).format(details_block)
+            color_id = "8"  # Graphite — distinct from booked classes
+        elif is_waitlist:
             summary = "\u23f3 {} (waitlist)".format(name)
             description = (
                 "Beth is on the WAITLIST for this class.\n"
@@ -1435,6 +1491,7 @@ def run_auto_booking(days_ahead=7):
     total_booked = []
     total_skipped = []
     total_already = []
+    total_available = []
     enrolled_classes = []
 
     with sync_playwright() as p:
@@ -1467,18 +1524,21 @@ def run_auto_booking(days_ahead=7):
             log.info("-" * 40)
 
             try:
-                booked, skipped, already = find_and_book_classes(
-                    page, target)
+                booked, skipped, already, available = (
+                    find_and_book_classes(page, target))
                 total_booked.extend(booked)
                 total_skipped.extend(skipped)
                 total_already.extend(already)
+                total_available.extend(available)
             except Exception as e:
                 log.warning("Error on {}: {}".format(
                     target.strftime("%m/%d"), e))
                 page.screenshot(path="debug/error_{}.png".format(
                     target.strftime("%m%d")))
 
-        # After booking, check what Beth is ACTUALLY enrolled in
+        # After booking, check what Beth is ACTUALLY enrolled in.
+        # Even in LIST_ONLY mode, this captures classes she signed up
+        # for herself — those should still show as ✅ on her calendar.
         log.info("")
         log.info("=" * 60)
         log.info("Checking Beth's Enrolled Schedule")
@@ -1491,6 +1551,25 @@ def run_auto_booking(days_ahead=7):
             # Don't crash — booking may have succeeded even if
             # schedule check failed. Calendar sync will be skipped
             # but existing events are preserved.
+
+        # Add the 'available' classes (those Beth COULD sign up for)
+        # to the list bound for calendar sync. The event builder
+        # distinguishes them via is_available=True.
+        # If a class also appears in enrolled_classes (Beth signed up
+        # herself), the enrolled entry takes precedence — drop the
+        # available duplicate.
+        enrolled_keys = set()
+        for ec in enrolled_classes:
+            enrolled_keys.add(
+                (ec.get("date", ""),
+                 ec.get("time", "").upper().replace(" ", ""),
+                 ec.get("name", "").lower()[:20]))
+        for av in total_available:
+            key = (av.get("date", ""),
+                   av.get("time", "").upper().replace(" ", ""),
+                   av.get("name", "").lower()[:20])
+            if key not in enrolled_keys:
+                enrolled_classes.append(av)
 
         browser.close()
 
