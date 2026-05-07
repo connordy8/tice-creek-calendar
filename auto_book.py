@@ -1495,7 +1495,7 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    days = 14
+    days = 7  # max 7 — Mindbody flags accounts that book >1 week ahead
     if len(sys.argv) > 1:
         try:
             days = int(sys.argv[1])
