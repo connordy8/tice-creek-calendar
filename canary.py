@@ -34,16 +34,20 @@ sys.path.insert(0, str(Path(__file__).parent))
 from weekly_audit import scrape_week, matches_beth, EARLIEST_HOUR  # noqa
 
 
-WEEKDAY_MIN_CLASSES = 5  # Tice Creek normally has 10+ per weekday
-WEEK_MIN_BETH_MATCHES = 5  # Across a full week she normally has 10+
+# Thresholds calibrated post-2026-05-07 (booking disabled — calendar
+# now lists Beth-matched classes as 'available' instead of auto-booking).
+# After filtering to Beth's preferences, a typical weekday yields 1–5
+# classes. The canary's job is to catch SILENT-FAIL: Mindbody schema
+# changes that make scrape_week return ~0 results across the board.
+WEEKDAY_MIN_CLASSES = 1  # any Mon-Fri returning 0 = scraper broken
+WEEK_MIN_BETH_MATCHES = 5  # filter sanity check (typical: 15–25)
 
-# Coverage check: every day WITHIN MINDBODY'S BOOKING WINDOW (next 7
-# days) should have >= 1 calendar event. We don't check beyond 7 days
-# because Tice Creek's reservation window hasn't opened — those days
-# WILL fill in as the window slides forward. Alerting about days
-# beyond the window would produce false positives every single day.
+# Coverage check: alert only if the WHOLE 7-day window has < N events
+# (i.e. the system stopped pushing classes to the calendar entirely).
+# Per-day empty checks were retired when booking was disabled — weekend
+# days at Tice Creek are routinely empty and that's fine now.
 COVERAGE_DAYS = 7
-DAYS_EMPTY_TOLERANCE = 0  # any empty day in the booking window = red flag
+WEEK_MIN_TOTAL_EVENTS = 5  # whole-window floor; below this = something broke
 
 
 def _check_calendar_coverage():
@@ -81,26 +85,24 @@ def _check_calendar_coverage():
                 e.get("summary", ""))
 
     today = datetime.now().date()
-    empty_days = []
+    total_events = 0
     for offset in range(COVERAGE_DAYS):
         d = today + timedelta(days=offset)
         ds = d.strftime("%Y-%m-%d")
         weekday = d.strftime("%A")
         n = len(by_date.get(ds, []))
+        total_events += n
         log.info("  cal coverage {} {} → {} events".format(
             weekday, ds, n))
-        if n == 0:
-            empty_days.append("{} {}".format(weekday, ds))
 
     alerts = []
-    if len(empty_days) > DAYS_EMPTY_TOLERANCE:
+    if total_events < WEEK_MIN_TOTAL_EVENTS:
         alerts.append(
-            "Beth's calendar has {} empty day(s) in the next {} days: "
-            "{}. Every day should have at least one event (class, "
-            "appointment, or drop-in). Check that auto-book is "
-            "running and matching her preferences correctly."
-            .format(len(empty_days), COVERAGE_DAYS,
-                    ", ".join(empty_days)))
+            "Beth's calendar has only {} total event(s) across the "
+            "next {} days (expected >= {}). The sync may have stopped "
+            "pushing classes to the calendar entirely — check "
+            "auto-book and sync workflows."
+            .format(total_events, COVERAGE_DAYS, WEEK_MIN_TOTAL_EVENTS))
     return alerts
 
 
@@ -127,8 +129,10 @@ def main():
         weekday = d.strftime("%A")
         n = len(by_date.get(ds, []))
         log.info("  {} {} → {} classes".format(weekday, ds, n))
-        # Mon-Sat are usually busy; Sundays can be light
-        if d.weekday() < 6 and n < WEEKDAY_MIN_CLASSES:
+        # Only check weekdays. Tice Creek's weekend schedule is too
+        # sparse — Beth's filtered class count on Sat/Sun is often 0
+        # legitimately, and that's not a scraper failure.
+        if d.weekday() < 5 and n < WEEKDAY_MIN_CLASSES:
             alerts.append(
                 "{} {}: only {} classes scraped (expected >= {})"
                 .format(weekday, ds, n, WEEKDAY_MIN_CLASSES))
