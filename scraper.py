@@ -42,6 +42,11 @@ SCHEDULE_PAGES = {
 ROSSMOOR_MOVIE_PDF_URL = (
     "https://rossmoor.com/residents/recreation/movies-and-special-events/"
 )
+# As of May 2026 Rossmoor restructured their site. The movie/event
+# calendar is now a JS-rendered widget on myrossmoor.com whose data
+# is embedded as a base64-encoded inline <script>. We parse the JSON
+# out of that script instead of downloading a PDF.
+MYROSSMOOR_EVENTS_URL = "https://myrossmoor.com/events-calendar/"
 MOVIE_LOCATION = (
     "Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, Walnut Creek, CA 94595"
 )
@@ -332,6 +337,150 @@ def resolve_conflicts(classes):
 # =========================================================================
 # Movie scraping (Rossmoor Peacock Hall)
 # =========================================================================
+
+# Venue → full address mapping for events scraped from the widget
+MYROSSMOOR_VENUE_LOCATIONS = {
+    "Peacock Hall":
+        "Peacock Hall, Gateway Complex, 1001 Golden Rain Rd, "
+        "Walnut Creek, CA 94595",
+    "Event Center":
+        "Event Center, 1021 Stanley Dollar Dr, Walnut Creek, CA 94595",
+    "Fireside Room":
+        "Fireside Room, Gateway Complex, 1001 Golden Rain Rd, "
+        "Walnut Creek, CA 94595",
+    "Peacock Plaza":
+        "Peacock Plaza, Gateway Complex, 1001 Golden Rain Rd, "
+        "Walnut Creek, CA 94595",
+}
+
+
+def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
+    """Scrape the MyRossmoor Recreation Department events page.
+
+    The page renders a filterable calendar widget. Events are encoded
+    as a JSON object inside a base64-encoded inline <script> tag —
+    we extract that JSON directly (no Playwright, no PDF parsing).
+
+    Returns (movies, concerts) in the same shape as parse_recreation_pdf.
+    """
+    import urllib.request
+    import base64
+    import json as _json
+
+    log.info("Fetching MyRossmoor events page: {}".format(url))
+    req = urllib.request.Request(url, headers={
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/121.0.0.0 Safari/537.36"
+        ),
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        html = resp.read().decode("utf-8", errors="replace")
+    log.info("  Downloaded {:,} bytes".format(len(html)))
+
+    # Find every inline base64-encoded script and decode each. The
+    # one we want contains both 'monthName' and 'movies'.
+    b64_scripts = re.findall(
+        r'<script[^>]*src="data:text/javascript;base64,'
+        r'([A-Za-z0-9+/=]+)"', html)
+    log.info("  Inspecting {} inline scripts".format(len(b64_scripts)))
+
+    events_js = None
+    for b64 in b64_scripts:
+        try:
+            decoded = base64.b64decode(b64).decode("utf-8",
+                                                   errors="replace")
+        except Exception:
+            continue
+        if "monthName" in decoded and "movies" in decoded:
+            events_js = decoded
+            break
+
+    if not events_js:
+        raise RuntimeError(
+            "Couldn't find the events data script on {}. The page "
+            "structure may have changed.".format(url))
+
+    # Extract the months=[...] array
+    m = re.search(
+        r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;\s*(?:let|var|const)\s+af",
+        events_js, re.DOTALL)
+    if not m:
+        m = re.search(
+            r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;",
+            events_js, re.DOTALL)
+    if not m:
+        raise RuntimeError(
+            "Couldn't find months=[...] array in events script")
+
+    months = _json.loads(m.group(1))
+    log.info("  Parsed {} month(s)".format(len(months)))
+
+    movies = []
+    concerts = []
+    for mo in months:
+        month_name = mo.get("monthName", "")
+        year = int(mo.get("year", datetime.now().year))
+        month_idx = int(mo.get("monthIdx", 0))  # 0-based
+        month_num = month_idx + 1
+        log.info("  {} {}: {} movies, {} events".format(
+            month_name, year, len(mo.get("movies", [])),
+            len(mo.get("events", []))))
+
+        for mv in mo.get("movies", []):
+            try:
+                day = int(mv["date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            showtimes = _parse_showtimes(
+                mv.get("times", ""), year, month_num, day)
+            for dt in showtimes:
+                movies.append({
+                    "title": mv.get("title", "").strip(),
+                    "movie_year": (mv.get("year") or "").strip(),
+                    "date": "{}-{:02d}-{:02d}".format(
+                        year, month_num, day),
+                    "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
+                    "start_hour": dt.hour,
+                    "start_dt": dt,
+                    "is_movie": True,
+                    "venue": mv.get("venue", "Peacock Hall"),
+                    "rating": mv.get("rating", ""),
+                    "runtime": mv.get("runtime", ""),
+                    "series": mv.get("series", ""),
+                    "cost": mv.get("cost", "Free"),
+                })
+
+        for ev in mo.get("events", []):
+            try:
+                day = int(ev["date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            showtimes = _parse_showtimes(
+                ev.get("times", ""), year, month_num, day)
+            for dt in showtimes:
+                venue = ev.get("venue", "Event Center")
+                concerts.append({
+                    "title": ev.get("title", "").strip(),
+                    "event_type": "Special Event",
+                    "date": "{}-{:02d}-{:02d}".format(
+                        year, month_num, day),
+                    "start_iso": dt.strftime("%Y-%m-%dT%H:%M"),
+                    "start_hour": dt.hour,
+                    "start_dt": dt,
+                    "cost": ev.get("cost", "Free"),
+                    "location_code": venue,
+                    "venue": venue,
+                    "is_concert": True,
+                })
+
+    log.info("  Total: {} movie showings, {} special events".format(
+        len(movies), len(concerts)))
+    return movies, concerts
+
+
+
 
 def download_movie_pdf(url=ROSSMOOR_MOVIE_PDF_URL):
     """Download the Rossmoor Recreation Calendar PDF."""
@@ -700,25 +849,26 @@ def scrape_entertainment(config):
 
     min_hour = config.get("movie_earliest_hour", 18)  # 6 PM default
 
+    # Primary source: MyRossmoor events page (JSON in inline script).
+    # Falls back to the legacy PDF parser only if the new source fails
+    # — useful if Rossmoor restructures their site again.
     try:
-        pdf_path = download_movie_pdf()
+        all_movies, all_concerts = scrape_myrossmoor_events()
     except Exception as e:
-        log.warning("Failed to download recreation PDF: {}".format(e))
-        return [], []
-
-    try:
-        all_movies, all_concerts = parse_recreation_pdf(pdf_path)
-    except Exception as e:
-        import traceback
-        log.warning("Failed to parse recreation PDF: {}".format(e))
-        log.warning(traceback.format_exc())
-        return [], []
-    finally:
-        import os
+        log.warning("MyRossmoor scrape failed ({}), trying legacy PDF"
+                    .format(e))
         try:
-            os.unlink(pdf_path)
-        except OSError:
-            pass
+            pdf_path = download_movie_pdf()
+            all_movies, all_concerts = parse_recreation_pdf(pdf_path)
+        except Exception as e2:
+            log.warning("Legacy PDF source also failed: {}".format(e2))
+            return [], []
+        finally:
+            import os
+            try:
+                os.unlink(pdf_path)  # noqa
+            except (OSError, NameError):
+                pass
 
     # --- Filter movies to evening showings ---
     evening_movies = []
