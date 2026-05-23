@@ -1,0 +1,47 @@
+name: Probe Rossmoor Events
+
+# On-demand smoke test for the Rossmoor events scraper.
+# Runs scrape_myrossmoor_events() in isolation and prints what it
+# found — no calendar push, no side effects. Use this if you suspect
+# the Rossmoor site has changed and want to verify the scraper
+# still works before the next scheduled sync.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - name: Probe
+        run: |
+          python3 -c "
+          from scraper import scrape_myrossmoor_events
+          movies, concerts = scrape_myrossmoor_events()
+          print()
+          print(f'=== HEALTH CHECK ===')
+          print(f'Movies parsed:   {len(movies)}')
+          print(f'Concerts parsed: {len(concerts)}')
+          print(f'Total:           {len(movies) + len(concerts)}')
+          print()
+          print('=== Sample movies ===')
+          for m in movies[:5]:
+              print(f'  {m[\"date\"]} {m[\"start_iso\"][-5:]} - {m[\"title\"]}')
+          print()
+          print('=== Sample events ===')
+          for c in concerts[:10]:
+              print(f'  {c[\"date\"]} {c[\"start_iso\"][-5:]} - {c[\"title\"]} @ {c[\"venue\"]} ({c[\"cost\"]})')
+          "

@@ -33,6 +33,11 @@ log = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent))
 from weekly_audit import scrape_week, matches_beth, EARLIEST_HOUR  # noqa
 
+# Rossmoor events check — separate from Tice Creek classes. If the
+# MyRossmoor events page is broken (URL moved, schema changed,
+# returned empty), we want an alert independent of Tice Creek health.
+ROSSMOOR_EVENTS_MIN_THIS_MONTH = 5  # if fewer than this, flag
+
 
 # Thresholds calibrated post-2026-05-07 (booking disabled — calendar
 # now lists Beth-matched classes as 'available' instead of auto-booking).
@@ -166,6 +171,37 @@ def main():
     except Exception as e:
         log.warning("Coverage check failed: {}".format(e))
         alerts.append("Calendar coverage check failed: {}".format(e))
+
+    # Rossmoor events check — independent from Tice Creek health.
+    # Catches the May 2026 failure mode where the site reorganized
+    # and the scraper silently returned 0 movies/concerts for weeks.
+    log.info("")
+    log.info("Rossmoor events scrape check...")
+    try:
+        from scraper import scrape_myrossmoor_events
+        movies, concerts = scrape_myrossmoor_events()
+        total = len(movies) + len(concerts)
+        log.info("  Rossmoor scrape returned {} movies + {} events "
+                 "= {} total".format(
+                     len(movies), len(concerts), total))
+        # The scraper itself raises if it gets back < 10 events.
+        # An additional alert here covers the case where the page
+        # technically parsed but came back with very little (e.g.,
+        # end of a calendar period).
+        if total < ROSSMOOR_EVENTS_MIN_THIS_MONTH:
+            alerts.append(
+                "Rossmoor events scrape returned only {} total events "
+                "({} movies + {} concerts). Expected >= {}. The "
+                "MyRossmoor calendar page may need attention."
+                .format(total, len(movies), len(concerts),
+                        ROSSMOOR_EVENTS_MIN_THIS_MONTH))
+    except Exception as e:
+        log.warning("Rossmoor events check failed: {}".format(e))
+        alerts.append(
+            "Rossmoor events scraper FAILED: {}. Check that "
+            "https://myrossmoor.com/events-calendar/ still exists "
+            "and that its inline event-data script is still parseable."
+            .format(e))
 
     if alerts:
         msg = "\n\n".join(alerts)

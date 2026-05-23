@@ -354,6 +354,43 @@ MYROSSMOOR_VENUE_LOCATIONS = {
 }
 
 
+# Known candidate URLs for the events calendar. We try each in order
+# until one returns a parseable page. If Rossmoor reorganizes again,
+# we just add a new candidate here — no code change to the parsing
+# logic needed.
+MYROSSMOOR_EVENT_URL_CANDIDATES = [
+    "https://myrossmoor.com/events-calendar/",
+    "https://myrossmoor.com/recreation-events/",
+    "https://myrossmoor.com/events/",
+    "https://myrossmoor.com/calendar/",
+]
+
+# Sanity thresholds — anything below these in a successful scrape
+# suggests the page format changed even though we got SOME data back.
+# Tuned conservatively: Rossmoor publishes ~2 months at a time with
+# ~20+ items each.
+MIN_EXPECTED_TOTAL_EVENTS = 10     # raise if scrape returns fewer
+MIN_EXPECTED_MONTHS = 1            # at minimum we should get current month
+EXPECTED_HEALTHY_TOTAL = 30        # below this → warn (not fatal)
+
+
+def _fetch_events_page(url, timeout=30):
+    """Download one events page candidate. Returns HTML or raises."""
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/121.0.0.0 Safari/537.36"
+        ),
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # Follow redirects implicitly; capture final URL so we log it
+        final_url = resp.geturl()
+        html = resp.read().decode("utf-8", errors="replace")
+    return html, final_url
+
+
 def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
     """Scrape the MyRossmoor Recreation Department events page.
 
@@ -362,22 +399,68 @@ def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
     we extract that JSON directly (no Playwright, no PDF parsing).
 
     Returns (movies, concerts) in the same shape as parse_recreation_pdf.
+    Raises RuntimeError if the data looks empty or malformed, so the
+    caller can fall back to a different source.
     """
-    import urllib.request
     import base64
     import json as _json
 
-    log.info("Fetching MyRossmoor events page: {}".format(url))
-    req = urllib.request.Request(url, headers={
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/121.0.0.0 Safari/537.36"
-        ),
-    })
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        html = resp.read().decode("utf-8", errors="replace")
-    log.info("  Downloaded {:,} bytes".format(len(html)))
+    # Try the primary URL, then alternates if it returns nothing
+    # parseable. Each candidate must contain the event data script,
+    # otherwise we move on.
+    candidates = [url]
+    if url == MYROSSMOOR_EVENTS_URL:
+        # Only use fallbacks when the caller didn't explicitly pin a URL
+        for c in MYROSSMOOR_EVENT_URL_CANDIDATES:
+            if c not in candidates:
+                candidates.append(c)
+
+    def _page_has_event_data(html_blob):
+        """Quick sniff: does this page contain the events JSON
+        anywhere, either in plain HTML or inside a base64 script?"""
+        if not html_blob:
+            return False
+        if "monthName" in html_blob and "movies" in html_blob:
+            return True
+        for s in re.findall(
+                r'data:text/javascript;base64,([A-Za-z0-9+/=]+)',
+                html_blob):
+            try:
+                decoded = base64.b64decode(s).decode(
+                    "utf-8", errors="ignore")
+            except Exception:
+                continue
+            if "monthName" in decoded and "movies" in decoded:
+                return True
+        return False
+
+    html = None
+    final_url = None
+    last_err = None
+    for candidate in candidates:
+        try:
+            log.info("Fetching MyRossmoor events page: {}".format(
+                candidate))
+            html_candidate, final_url = _fetch_events_page(candidate)
+            log.info("  Downloaded {:,} bytes from {}".format(
+                len(html_candidate), final_url))
+            if _page_has_event_data(html_candidate):
+                html = html_candidate
+                break
+            log.warning(
+                "  Page from {} doesn't appear to contain event "
+                "data — trying next candidate".format(candidate))
+        except Exception as e:
+            last_err = e
+            log.warning(
+                "  Fetch failed for {}: {}".format(candidate, e))
+
+    if not html:
+        raise RuntimeError(
+            "All MyRossmoor URL candidates failed. Last error: {}. "
+            "Tried: {}. The recreation events page may have been "
+            "moved again — update MYROSSMOOR_EVENT_URL_CANDIDATES."
+            .format(last_err, candidates))
 
     # Find every inline base64-encoded script and decode each. The
     # one we want contains both 'monthName' and 'movies'.
@@ -475,8 +558,44 @@ def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
                     "is_concert": True,
                 })
 
+    total = len(movies) + len(concerts)
     log.info("  Total: {} movie showings, {} special events".format(
         len(movies), len(concerts)))
+
+    # === Validation gate ===
+    # Raise if the result looks broken so the caller can fall back
+    # to the legacy PDF source or alert. The goal: never silently
+    # return empty data and let the calendar sit stale for weeks.
+    if len(months) < MIN_EXPECTED_MONTHS:
+        raise RuntimeError(
+            "Parsed {} month(s); expected at least {}. The page "
+            "structure may have changed."
+            .format(len(months), MIN_EXPECTED_MONTHS))
+    if total < MIN_EXPECTED_TOTAL_EVENTS:
+        raise RuntimeError(
+            "Parsed only {} total events (movies + special events); "
+            "expected at least {}. The data shape may have changed "
+            "or Rossmoor may be between calendars."
+            .format(total, MIN_EXPECTED_TOTAL_EVENTS))
+    if total < EXPECTED_HEALTHY_TOTAL:
+        log.warning(
+            "  Only {} total events — below healthy threshold of {}. "
+            "Sync will proceed but worth a manual check."
+            .format(total, EXPECTED_HEALTHY_TOTAL))
+    # Sanity check date range: events must span the next 7 days at
+    # minimum, otherwise we may be parsing a stale archived page.
+    from datetime import date as _date
+    today = _date.today()
+    future_window_end = today + timedelta(days=7)
+    has_future_event = any(
+        e["start_dt"].date() >= today and e["start_dt"].date()
+        <= future_window_end + timedelta(days=60)
+        for e in (movies + concerts))
+    if not has_future_event:
+        raise RuntimeError(
+            "No events in the next 60 days — page may be showing "
+            "archived data. Check {}.".format(MYROSSMOOR_EVENTS_URL))
+
     return movies, concerts
 
 
