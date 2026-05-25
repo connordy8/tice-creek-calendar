@@ -1,20 +1,19 @@
 name: Weekly Calendar Audit
 
-# Self-healing audit:
-#   1. Run scraper.py to refresh Mindbody data into docs/beth-calendar.ics
-#   2. Trigger auto-book.yml to attempt fresh bookings (waits for it to finish)
-#   3. Run weekly_audit.py to compare scraper data vs Beth's calendar
-#   4. If gaps remain AFTER step 2, then alert (manual fix needed)
-#   5. If first audit pass found gaps but step 2 closed them, no alert
+# DISABLED FROM SCHEDULE 2026-05-25 — Connor's directive: 'Stop
+# sending me these alerts.' This audit's logic predates the booking
+# disablement. It compares 'what's on Mindbody' to 'what's on Beth's
+# calendar' and treats missing entries as gaps requiring action.
 #
-# This means the user only ever sees an alert when the system has
-# tried and failed to self-heal.
+# That doesn't make sense anymore: Beth opted out of auto-booking
+# and signs up for things herself, so anything she DIDN'T sign up
+# for is intentional — not a gap. The audit will always find 'gaps'
+# in the new world.
+#
+# Kept available as a manual-only workflow_dispatch in case it's
+# useful for debugging in the future. No cron trigger.
 
 on:
-  # Sunday 10pm Pacific (Mon 06:00 UTC) — late enough that the week
-  # ahead is fully populated.
-  schedule:
-    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       days:
