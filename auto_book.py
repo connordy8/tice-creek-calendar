@@ -1590,14 +1590,10 @@ def run_auto_booking(days_ahead=7):
             sync_enrolled_to_gcal(enrolled_classes)
         except Exception as e:
             log.error("Calendar sync failed: {}".format(e))
-            # Don't crash the workflow — booking succeeded,
-            # calendar will catch up on next run.
-            # But do try to send an alert.
-            try:
-                from notify import send_alert
-                send_alert("Auto-Book", "Calendar sync failed: {}".format(e))
-            except Exception:
-                pass
+            # Don't crash the workflow — calendar will catch up on
+            # the next scheduled run. Email alert intentionally
+            # disabled (2026-05-27 per Connor) — transient sync
+            # failures shouldn't notify; the next run handles it.
     else:
         log.info("No enrolled classes to sync — checking if we should "
                  "clear stale calendar events...")

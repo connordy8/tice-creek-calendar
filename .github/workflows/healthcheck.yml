@@ -1,11 +1,11 @@
 name: Calendar Healthcheck
 
 on:
-  # Run twice daily: 9 AM and 6 PM Pacific (5 PM and 2 AM UTC)
-  schedule:
-    - cron: "0 17 * * *"
-    - cron: "0 2 * * *"
-
+  # CRON DISABLED 2026-05-27 — same outdated logic as the weekly
+  # audit. healthcheck.py alerts when no fitness classes are found
+  # on Beth's calendar, but auto-booking is intentionally off so
+  # 'no fitness classes booked' is the new normal. Manual dispatch
+  # only.
   workflow_dispatch:
 
 jobs:

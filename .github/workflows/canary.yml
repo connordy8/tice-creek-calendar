@@ -7,10 +7,12 @@ name: Schema Canary
 #   4. Only alert if gaps persist after self-heal
 
 on:
-  # Twice daily: 9 AM PT and 9 PM PT (16:00 and 04:00 UTC).
-  schedule:
-    - cron: "0 16 * * *"
-    - cron: "0 4 * * *"
+  # CRON DISABLED 2026-05-27 — Connor: 'Stop sending me these
+  # alerts.' The canary's calendar-coverage logic still expects
+  # auto-booked fitness classes, which Beth opted out of. Even if
+  # the scraper-failure checks are still valuable, the noise level
+  # is unacceptable. Manual dispatch only — re-enable schedule
+  # later if the alerting can be recalibrated.
   workflow_dispatch:
 
 permissions:
