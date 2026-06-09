@@ -63,5 +63,18 @@
     "source": "Appointment reminder from Ognomy Sleep",
     "confidence": 0.95,
     "created": "2026-04-19 15:41"
+  },
+  {
+    "uid": "0c2aa902a8638ae7",
+    "type": "add",
+    "title": "Monthly roundtable discussion meeting",
+    "date": "2026-06-12",
+    "start_time": "10:30",
+    "end_time": null,
+    "location": "Club Room at Creekside",
+    "notes": "Zoom meeting also available. Meeting ID: 891 7156 5099, Passcode: 641083",
+    "source": "Email from Linda Walonen about book club meeting",
+    "confidence": 0.85,
+    "created": "2026-06-09 12:34"
   }
 ]
