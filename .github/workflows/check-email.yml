@@ -9,6 +9,11 @@ on:
 
   # Allow manual trigger
   workflow_dispatch:
+    inputs:
+      reprocess_since:
+        description: 'Re-run on all emails since YYYY-MM-DD, read or not (recovery; dedup prevents duplicates)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -56,7 +61,8 @@ jobs:
           CALENDAR_EMAIL: bethcalendarupdate@gmail.com
           CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python email_handler.py
+          REPROCESS_SINCE: ${{ inputs.reprocess_since }}
+        run: python email_handler.py ${REPROCESS_SINCE:+--reprocess-since "$REPROCESS_SINCE"}
 
       - name: Commit email updates if any
         env:

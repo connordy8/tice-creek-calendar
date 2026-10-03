@@ -250,6 +250,7 @@ Phone reminders were previously in this repo and have been **removed** (Apr 2026
 | No movies Jun 30 – Oct 3 2026 | 0 fitness classes made `scraper.py` exit before reaching movies; then MyRossmoor changed its data format (`movies=[...]` instead of `months=[...]`) | Sources sync independently; parser handles both formats |
 | All workflows stopped Aug 9 2026 | GitHub disables scheduled workflows after 60 days without commits | Keep-alive step in `sync.yml` + `check-email.yml` |
 | Forwarded appointments never reached the calendar (Mar–Oct 2026) | `gcal_sync` stopped syncing the class list (where email "add" events were merged) when auto-book took over fitness | Appointments are their own category (`be0cd4`) |
+| Forwarded emails dismissed as "not relevant" (Oct 2026) | Model `claude-sonnet-4-20250514` retired (404); classifier treated API errors as "not relevant", and emails were marked read on fetch | Model → `claude-sonnet-5-5`; fetch with BODY.PEEK, mark read only after handling; API errors leave the email unread and exit 1. Recover with `check-email.yml` input `reprocess_since` |
 | Scrape failure would wipe movies/concerts | Failed scrape returned `[]`, sync deleted everything not in it | Failures return None; circuit breaker |
 
 ---

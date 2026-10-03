@@ -51,6 +51,14 @@ if "--audit" in sys.argv:
         AUDIT_COUNT = 20
 AUDIT_MODE = AUDIT_COUNT > 0
 
+# --reprocess-since YYYY-MM-DD: run the live pipeline over every email
+# received since that date, read or not (dedup makes this safe). Used to
+# recover emails that were dismissed while the model API was failing.
+REPROCESS_SINCE = None
+if "--reprocess-since" in sys.argv:
+    REPROCESS_SINCE = datetime.strptime(
+        sys.argv[sys.argv.index("--reprocess-since") + 1], "%Y-%m-%d")
+
 # -------------------------------------------------------------------------
 # Config
 # -------------------------------------------------------------------------
@@ -84,12 +92,17 @@ KNOWN_CLASS_NAMES = [
     "democrats",
 ]
 
-# Claude models
-# Classifier can be cheap; extractor needs solid reasoning.
-CLASSIFIER_MODEL = os.environ.get(
-    "CLASSIFIER_MODEL", "claude-sonnet-4-20250514")
-EXTRACTOR_MODEL = os.environ.get(
-    "EXTRACTOR_MODEL", "claude-sonnet-4-20250514")
+# Claude models. claude-sonnet-4-20250514 was retired and 404'd, which
+# silently classified every email as "not relevant" (Oct 2026).
+# Classifier runs at low effort; extractor keeps the default.
+CLASSIFIER_MODEL = os.environ.get("CLASSIFIER_MODEL", "claude-sonnet-5-5")
+EXTRACTOR_MODEL = os.environ.get("EXTRACTOR_MODEL", "claude-sonnet-5-5")
+
+
+def _response_text(resp):
+    """Concatenate text blocks. With adaptive thinking the first block
+    can be a (possibly empty) thinking block, so never use content[0]."""
+    return "".join(b.text for b in resp.content if b.type == "text").strip()
 
 
 # =========================================================================
@@ -178,18 +191,50 @@ def _parse_msg(num, raw):
     }
 
 
-def fetch_unread_emails(imap):
-    """Fetch all unread emails from the inbox (marks them read)."""
+def fetch_unread_emails(imap, since=None):
+    """Fetch unread emails (or all since a date) WITHOUT marking them read.
+
+    message_num is the IMAP UID. Callers mark an email read with
+    mark_emails_seen() only after it was handled, so an API outage
+    leaves it unread and it's retried on the next run.
+    """
     imap.select("INBOX")
-    _, message_numbers = imap.search(None, "UNSEEN")
+    if since:
+        criteria = "SINCE {}".format(since.strftime("%d-%b-%Y"))
+    else:
+        criteria = "UNSEEN"
+    _, data = imap.uid("search", None, criteria)
     emails = []
-    for num in message_numbers[0].split():
-        if not num:
+    for uid in data[0].split():
+        if not uid:
             continue
-        _, msg_data = imap.fetch(num, "(RFC822)")
-        emails.append(_parse_msg(num, msg_data[0][1]))
-    log.info("Found {} unread email(s)".format(len(emails)))
+        _, msg_data = imap.uid("fetch", uid, "(BODY.PEEK[])")
+        if msg_data and msg_data[0]:
+            emails.append(_parse_msg(uid, msg_data[0][1]))
+    log.info("Found {} {} email(s)".format(
+        len(emails), "unread" if not since else "recent"))
     return emails
+
+
+def mark_emails_seen(uids):
+    if not uids:
+        return
+    imap = connect_gmail()
+    if not imap:
+        log.error("Couldn't reconnect to mark {} email(s) read; they'll be "
+                  "re-checked next run (dedup prevents duplicates)"
+                  .format(len(uids)))
+        return
+    try:
+        imap.select("INBOX")
+        for uid in uids:
+            imap.uid("store", uid, "+FLAGS", "(\\Seen)")
+    finally:
+        try:
+            imap.close()
+            imap.logout()
+        except Exception:
+            pass
 
 
 def fetch_recent_emails_peek(imap, count):
@@ -264,14 +309,21 @@ def classify_email(client, email_data):
         body=email_data["body"][:4000],
     )
 
+    import anthropic
     try:
         resp = client.messages.create(
             model=CLASSIFIER_MODEL,
-            max_tokens=200,
+            max_tokens=4000,  # thinking tokens count toward this
+            output_config={"effort": "low"},
             system=CLASSIFIER_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
-        text = resp.content[0].text.strip()
+    except anthropic.APIError as e:
+        # API/network failure is not a verdict: leave the email unread
+        log.error("  Classifier API error (will retry): {}".format(e))
+        return None
+    try:
+        text = _response_text(resp)
         # Strip code fences
         if "```" in text:
             m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
@@ -356,17 +408,22 @@ def extract_actions(client, email_data):
         body=email_data["body"],
     )
 
+    import anthropic
     try:
         resp = client.messages.create(
             model=EXTRACTOR_MODEL,
-            max_tokens=1500,
+            max_tokens=16000,  # thinking tokens count toward this
             system=EXTRACTOR_SYSTEM.format(
                 year=today.year,
                 today=today.strftime("%A, %B %d, %Y"),
             ),
             messages=[{"role": "user", "content": prompt}],
         )
-        text = resp.content[0].text.strip()
+    except anthropic.APIError as e:
+        log.error("  Extractor API error (will retry): {}".format(e))
+        return None
+    try:
+        text = _response_text(resp)
         if "```" in text:
             m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
             if m:
@@ -686,7 +743,7 @@ def main():
         if AUDIT_MODE:
             emails = fetch_recent_emails_peek(imap, AUDIT_COUNT)
         else:
-            emails = fetch_unread_emails(imap)
+            emails = fetch_unread_emails(imap, since=REPROCESS_SINCE)
     finally:
         try:
             imap.close()
@@ -705,6 +762,8 @@ def main():
     decision_rows = []
     applied_total = 0
     classified_relevant = 0
+    handled_uids = []   # mark read once state is saved
+    retry_later = []    # API failures: leave unread
 
     for em in emails:
         log.info("")
@@ -713,6 +772,9 @@ def main():
 
         # Stage 1: classify
         verdict = classify_email(client, em)
+        if verdict is None:
+            retry_later.append(em)
+            continue
         log.info("   classifier: relevant={}  reason={}".format(
             verdict["relevant"], verdict["reason"]))
 
@@ -729,12 +791,17 @@ def main():
                 "gate_reason": verdict["reason"],
                 "decision": "filtered-classifier",
             })
+            handled_uids.append(em["message_num"])
             continue
 
         classified_relevant += 1
 
         # Stage 2: extract
         actions = extract_actions(client, em)
+        if actions is None:
+            retry_later.append(em)
+            continue
+        handled_uids.append(em["message_num"])
         if not actions:
             log.info("   extractor returned no actions")
             decision_rows.append({
@@ -782,6 +849,16 @@ def main():
         return
 
     save_manual_events(events)
+    if not REPROCESS_SINCE:
+        mark_emails_seen(handled_uids)
+    if retry_later:
+        # Loud on purpose: a dead model ID once made this drop every
+        # email silently for weeks.
+        log.error("{} email(s) hit Claude API errors and were left unread "
+                  "for the next run: {}".format(
+                      len(retry_later),
+                      "; ".join(e["subject"][:60] for e in retry_later)))
+        sys.exit(1)
     log.info("Done.")
 
 
