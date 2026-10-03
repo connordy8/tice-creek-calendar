@@ -1328,51 +1328,12 @@ def sync_enrolled_to_gcal(enrolled_classes):
     log.info("Found {} existing auto-booked events (out of {} total)".format(
         len(existing), len(all_calendar_items)))
 
-    # Also find and clean up scraper-created fitness events (prefix be0ca1)
-    # and any user-added duplicates that match our target class names.
-    # This prevents duplicates from multiple sources.
-    scraper_fitness = {}
-    user_duplicates = {}
-    target_keywords_flat = set()
-    for t in TARGET_CLASSES:
-        for kw in t["keywords"]:
-            target_keywords_flat.add(kw)
-
-    for item in all_calendar_items:
-        eid = item.get("id", "")
-        summary = (item.get("summary") or "").lower()
-
-        # Skip cancelled/deleted events
-        if item.get("status") == "cancelled":
-            continue
-
-        # Skip our own auto-booked events
-        if eid.startswith(BOOKED_EVENT_PREFIX):
-            continue
-
-        # Scraper-created fitness events (have be0ca1 prefix + fitness emoji)
-        if eid.startswith("be0ca1") and (
-                "\U0001f3cb" in summary or "\U0001f3ca" in summary):
-            scraper_fitness[eid] = item
-            continue
-
-        # User-added events that match target class names
-        # (no managed prefix, but contain class keywords)
-        for kw in target_keywords_flat:
-            if kw in summary:
-                user_duplicates[eid] = item
-                break
-
-    if scraper_fitness:
-        log.info("Found {} scraper-created fitness events to clean up"
-                 .format(len(scraper_fitness)))
-    if user_duplicates:
-        log.info("Found {} user-added duplicate events to clean up"
-                 .format(len(user_duplicates)))
-        for eid, item in user_duplicates.items():
-            log.info("  Duplicate: {} on {}".format(
-                item.get("summary", ""),
-                item.get("start", {}).get("dateTime", "")))
+    # NOTE: This used to also delete (a) any be0ca1 event with a fitness
+    # emoji and (b) ANY event on Beth's calendar whose title contained a
+    # class keyword ("chi", "mat", "fit", "water", ...), which would
+    # have wiped e.g. "Chiropractor" or "Water heater repair". Removed
+    # Oct 2026: this script only ever touches its own BOOKED_EVENT_PREFIX
+    # events now.
 
     # Create/update enrolled classes
     created = 0
@@ -1446,32 +1407,6 @@ def sync_enrolled_to_gcal(enrolled_classes):
                     existing[eid].get("summary", "")))
             except Exception as e:
                 log.warning("Failed to delete event: {}".format(e))
-
-    # Delete scraper-created fitness events (now managed by auto-booker)
-    for eid, item in scraper_fitness.items():
-        try:
-            service.events().delete(
-                calendarId=calendar_id,
-                eventId=eid,
-            ).execute()
-            deleted += 1
-            log.info("  Removed scraper fitness event: {}".format(
-                item.get("summary", "")))
-        except Exception as e:
-            log.warning("Failed to delete scraper event: {}".format(e))
-
-    # Delete user-added duplicates
-    for eid, item in user_duplicates.items():
-        try:
-            service.events().delete(
-                calendarId=calendar_id,
-                eventId=eid,
-            ).execute()
-            deleted += 1
-            log.info("  Removed user duplicate: {}".format(
-                item.get("summary", "")))
-        except Exception as e:
-            log.warning("Failed to delete user event: {}".format(e))
 
     log.info("Calendar sync: {} created, {} updated, {} removed".format(
         created, updated, deleted))

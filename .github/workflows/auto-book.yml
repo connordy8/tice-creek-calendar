@@ -1,39 +1,11 @@
 name: Auto-Book Classes
 
 on:
-  # Aggressive schedule to catch Mindbody's booking window the moment
-  # it opens. New days become bookable 7 days in advance — hitting
-  # midnight + early morning greatly increases odds of confirmed (vs
-  # waitlisted) spots, especially for popular classes.
-  #
-  # Pacific Time schedule (converted to UTC):
-  #   12:00 AM PT  (07:00 UTC) — catches midnight-open windows
-  #   12:15 AM PT  (07:15 UTC) — retry
-  #   12:30 AM PT  (07:30 UTC) — retry
-  #   01:00 AM PT  (08:00 UTC) — retry
-  #   05:00 AM PT  (12:00 UTC) — catches 5 AM-open windows
-  #   05:15 AM PT  (12:15 UTC) — retry
-  #   05:30 AM PT  (12:30 UTC) — retry
-  #   06:00 AM PT  (13:00 UTC)
-  #   06:30 AM PT  (13:30 UTC)
-  #   07:00 AM PT  (14:00 UTC)
-  #   08:00 AM PT  (15:00 UTC)
-  #   10:00 AM PT  (17:00 UTC)
-  #   12:00 PM PT  (19:00 UTC)
-  #   02:00 PM PT  (21:00 UTC)
-  #   04:00 PM PT  (23:00 UTC)
-  #   06:00 PM PT  (01:00 UTC)
-  #   08:00 PM PT  (03:00 UTC)
-  #   10:00 PM PT  (05:00 UTC)
-  schedule:
-    # Conservative schedule — Mindbody flags accounts that book too
-    # aggressively. Aim for ~6 runs/day total, focused on the two
-    # likely opening windows (midnight + 6 AM PT) plus a couple of
-    # daytime sweeps.
-    - cron: "0,15 7 * * *"     # 12:00 + 12:15 AM PT — midnight window
-    - cron: "0,15 13 * * *"    # 6:00 + 6:15 AM PT — early window
-    - cron: "0 17 * * *"       # 10 AM PT — morning sweep
-    - cron: "0 23 * * *"       # 4 PM PT — afternoon sweep
+  # RETIRED Oct 2026 (manual-only). Booking has been disabled since
+  # May 2026 and Mindbody's login page changed, so this script can't
+  # log in. Class listings now come from scraper.py (sync.yml) via
+  # tice_schedule.py, which needs no login. Re-adding a schedule here
+  # would create duplicate "available" class events.
 
   # Allow manual trigger
   workflow_dispatch:

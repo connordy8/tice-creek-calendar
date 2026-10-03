@@ -1,10 +1,12 @@
 # ============================================================
 # Tice Creek Calendar Sync – Beth's Preferences
 # ============================================================
-# Sync: Zumba, UJAM, Aquacise, Posture Balance, Mat Yoga,
-#        Functional Strength, Tai Chi, ForeverFit, Pickleball,
-#        Let's Stretch
-# Only sync: classes at 11am or later
+# List: Zumba, UJAM, Aquacise, Water Aerobics, Posture Balance,
+#       Mat Yoga, Functional Strength/Fitness, Tai Chi, ForeverFit,
+#       Let's Stretch, Strength & Stretch/Flexibility, Pilates Mat
+# Only list: classes at 11am or later (Zumba from 10am)
+# Beth signs up herself; the calendar shows whether sign-up is needed
+# and how many spots are left.
 # ============================================================
 
 calendar_name: "Tice Creek – Beth's Classes"
@@ -15,6 +17,7 @@ include_classes:
   - "zumba"
   - "ujam"
   - "aquacise"
+  - "water aerobics"     # "Water Aerobics" + "Aqua: Deep Water Aerobics"
   - "posture"
   - "mat yoga"
   - "foreverfit"
@@ -33,9 +36,15 @@ include_classes:
 # Classes to exclude
 exclude_classes:
   - "cancelled"
+  - "introduction to"    # equipment orientations, not classes
+  - "pickleball"         # explicitly removed Apr 2026
 
 # Only show classes at 11am or later
 earliest_hour: 11
+
+# Per-class exceptions to earliest_hour (matched against class name)
+earliest_hour_overrides:
+  zumba: 10
 
 # Start events 15 min early so Beth has travel time
 # (real class time still shown in the event description)
@@ -55,12 +64,17 @@ custom_titles:
 default_class_duration_minutes: 45
 
 # --- Rossmoor Entertainment Settings ---
-# Scrape the Peacock Hall movie & concert calendar from rossmoor.com
+# Scrape the Peacock Hall movie & concert calendar from myrossmoor.com
 include_movies: true
 include_concerts: true
 
-# Only include showings/concerts at or after this hour (18 = 6 PM)
-movie_earliest_hour: 18
+# Only include movie showings at or after this hour: Beth wants the
+# 7 PM and 9 PM shows only. Titles get the Rotten Tomatoes score;
+# descriptions get a short plot summary (cached in movie_info.json).
+movie_earliest_hour: 19
+
+# Concerts/special events at or after this hour (18 = 6 PM)
+concert_earliest_hour: 18
 
 # Default movie duration in minutes (most are ~2 hours)
 movie_duration_minutes: 135

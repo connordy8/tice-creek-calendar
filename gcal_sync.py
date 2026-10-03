@@ -1,7 +1,22 @@
 """Google Calendar API sync for Beth's calendar.
 
-Pushes fitness classes, movies, and concerts directly onto Beth's
-Google Calendar with per-event color coding.
+Pushes Tice Creek class listings, Rossmoor movies and concerts, and
+email-forwarded appointments onto Beth's Google Calendar.
+
+Safety rules (the calendar is Beth's real calendar, so a bug here
+deletes things she relies on):
+
+  1. We only ever touch events whose IDs carry one of our prefixes.
+     Nothing Beth or anyone else created is ever modified or deleted.
+  2. Each category (classes, movies, concerts, appointments) is
+     reconciled only if its source scraped successfully. A source
+     passed as None means "unknown", never "everything was cancelled".
+  3. Events that have already started are never deleted.
+  4. Class events are only removed inside the date range the Tice Creek
+     widget actually covered on this run.
+  5. Circuit breaker: if a run would delete more than half of a
+     category's upcoming events (and more than a handful), it deletes
+     nothing for that category and reports a failure instead.
 
 Google Calendar color IDs:
   1  Lavender       5  Banana      9  Blueberry
@@ -14,14 +29,18 @@ import hashlib
 import json
 import logging
 import os
-import sys
+import re
+import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 log = logging.getLogger("gcal_sync")
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 # Color IDs for different event types
 COLOR_FITNESS = "2"      # Sage (green)
@@ -30,9 +49,28 @@ COLOR_CONCERT = "6"      # Tangerine (orange)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# Prefix for event IDs we manage — lets us find/clean up our events
-# Google Calendar IDs must use only lowercase a-v and digits 0-9
-EVENT_ID_PREFIX = "be0ca1"
+# Prefixes for event IDs we manage. Google Calendar IDs must use only
+# lowercase a-v and digits 0-9.
+EVENT_ID_PREFIX = "be0ca1"        # movies + concerts (and legacy fitness)
+CLASS_EVENT_PREFIX = "be0cc3"     # Tice Creek class listings
+MANUAL_EVENT_PREFIX = "be0cd4"    # appointments forwarded by email
+# One-off movie events added by add_movies.py (Oct 2026), superseded by
+# this sync. Treated as movies so the first good run replaces them.
+LEGACY_MOVIE_PREFIX = "be0cb2"
+ALL_PREFIXES = (EVENT_ID_PREFIX, CLASS_EVENT_PREFIX, MANUAL_EVENT_PREFIX,
+                LEGACY_MOVIE_PREFIX)
+
+TICE_CREEK_ADDRESS = (
+    "Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595")
+SIGNUP_URL = "https://www.ticefitnesscenter.com/schedule/"
+AQUATICS_SIGNUP_URL = "https://www.ticefitnesscenter.com/aquatic-schedule/"
+
+MASS_DELETE_MIN = 5          # always allow deleting up to this many
+MASS_DELETE_FRACTION = 0.5   # beyond that, refuse if > this fraction
+
+
+class SyncError(RuntimeError):
+    pass
 
 
 def get_calendar_service():
@@ -47,30 +85,29 @@ def get_calendar_service():
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
-def gcal_api_call(fn, max_retries=3, **kwargs):
+def gcal_api_call(fn, max_retries=4, **kwargs):
     """Execute a Google Calendar API call with retry on transient errors.
 
-    Retries on 429 (rate limit), 500, 503 (server errors) with
-    exponential backoff.
+    Retries on 429 (rate limit), 500, 502, 503 and network errors with
+    exponential backoff. Other HTTP errors (403, 404, 409...) raise
+    immediately so callers can handle them.
     """
-    import time as _time
-    from googleapiclient.errors import HttpError
-
     for attempt in range(1, max_retries + 1):
         try:
             return fn(**kwargs).execute()
         except HttpError as e:
-            status = e.resp.status if hasattr(e, 'resp') else 0
-            if status in (429, 500, 503) and attempt < max_retries:
+            status = e.resp.status if hasattr(e, "resp") else 0
+            if status in (429, 500, 502, 503) and attempt < max_retries:
                 wait = 2 ** attempt
                 log.warning("  API error {} (attempt {}/{}), retrying in {}s"
                             .format(status, attempt, max_retries, wait))
-                _time.sleep(wait)
+                time.sleep(wait)
             else:
                 raise
-        except Exception as e:
+        except (OSError, TimeoutError) as e:
             if attempt < max_retries:
-                _time.sleep(2 ** attempt)
+                log.warning("  Network error ({}), retrying".format(e))
+                time.sleep(2 ** attempt)
             else:
                 raise
 
@@ -86,332 +123,456 @@ def make_event_id(prefix, unique_str):
     return "{}{}".format(EVENT_ID_PREFIX, h)
 
 
-def sync_to_google_calendar(classes, movies, concerts, config):
-    """Push all events to Beth's Google Calendar.
+def _hash_id(prefix, unique_str):
+    return prefix + hashlib.md5(unique_str.encode()).hexdigest()
 
-    Uses deterministic event IDs so re-running is idempotent:
-    - New events get created
-    - Existing events get updated
-    - Events we previously created that are no longer in the data get deleted
+
+def _now():
+    return datetime.now(PACIFIC).replace(tzinfo=None)
+
+
+def _event_start(item):
+    """Naive Pacific datetime for an event returned by the API."""
+    s = item.get("start", {})
+    raw = s.get("dateTime") or s.get("date")
+    if not raw:
+        return None
+    dt = datetime.fromisoformat(raw)
+    if dt.tzinfo:
+        dt = dt.astimezone(PACIFIC).replace(tzinfo=None)
+    return dt
+
+
+def _timed(start, end):
+    return {
+        "start": {"dateTime": start.strftime("%Y-%m-%dT%H:%M:%S"),
+                  "timeZone": "America/Los_Angeles"},
+        "end": {"dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
+                "timeZone": "America/Los_Angeles"},
+    }
+
+
+def _fmt_time(dt):
+    return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def _minutes(text, default):
+    m = re.search(r"\d+", str(text or ""))
+    return int(m.group()) if m and int(m.group()) > 0 else default
+
+
+# =========================================================================
+# Event builders
+# =========================================================================
+
+def _class_display_name(cls, config):
+    name = cls.get("name", "Class")
+    instr = cls.get("instructor", "").lower()
+    for rule in config.get("custom_titles", []) or []:
+        if (rule.get("match_name", "").lower() in name.lower()
+                and rule.get("match_instructor", "").lower() in instr):
+            return rule["title"]
+    # "Aqua:  Aquacise" -> "Aquacise", "CLUB: CAAR Tai Chi" -> "CAAR Tai Chi"
+    return re.sub(r"^(aqua|club)\s*:\s*", "", name, flags=re.I).strip()
+
+
+def class_status(cls, now):
+    """(short title tag, description line) for a class's sign-up state."""
+    cap = cls.get("capacity", 0)
+    left = cap - cls.get("registered", 0)
+    opens = cls.get("booking_opens")
+    opens_dt = datetime.fromisoformat(opens) if opens else None
+
+    if cls.get("is_club") or cap <= 0:
+        return ("drop-in",
+                "No sign-up needed: this is a drop-in class, just show up.")
+    if opens_dt and now < opens_dt:
+        when = "{} at {}".format(opens_dt.strftime("%a %b %-d"),
+                                 _fmt_time(opens_dt))
+        return ("sign-up opens {}".format(opens_dt.strftime("%a")),
+                "SIGN-UP REQUIRED. Sign-up opens {} ({} spots).".format(
+                    when, cap))
+    if cls.get("bookable"):
+        if 0 < left <= cap:
+            return ("sign up · {} left".format(left),
+                    "SIGN-UP REQUIRED. Spots available: {} of {} left."
+                    .format(left, cap))
+        return ("sign up",
+                "SIGN-UP REQUIRED. Spots are available.")
+    if cls.get("waitlistable"):
+        return ("FULL · waitlist",
+                "SIGN-UP REQUIRED. Class is full, but the waitlist is open.")
+    return ("FULL", "SIGN-UP REQUIRED. Class is full (no waitlist).")
+
+
+def build_class_event(cls, config, now):
+    start = datetime.fromisoformat(cls["start_iso"])
+    dur = cls.get("duration_minutes") or config.get(
+        "default_class_duration_minutes", 45)
+    end = start + timedelta(minutes=dur)
+    early = config.get("early_start_minutes", 0)
+    tag, status_line = class_status(cls, now)
+    aquatic = cls.get("is_aquatics")
+    emoji = "\U0001f3ca" if aquatic else "\U0001f3cb️"
+    name = _class_display_name(cls, config)
+
+    lines = [status_line]
+    if tag != "drop-in":
+        lines.append("Beth signs up herself on the Mindbody app or at {}"
+                     .format(AQUATICS_SIGNUP_URL if aquatic else SIGNUP_URL))
+        lines.append("(This listing can't see Beth's own bookings. If "
+                     "she's already signed up, she's all set.)")
+    lines.append("")
+    lines.append("Class time: {} - {} ({} min). Calendar starts {} min "
+                 "early for travel.".format(_fmt_time(start),
+                                            _fmt_time(end), dur, early))
+    if cls.get("instructor"):
+        lines.append("Instructor: {}".format(cls["instructor"]))
+    if cls.get("room"):
+        lines.append("Room: {}".format(cls["room"]))
+    if cls.get("email_notes"):
+        lines.append("Note: {}".format(cls["email_notes"]))
+    if cls.get("description"):
+        lines.append("")
+        lines.append(cls["description"])
+    lines.append("")
+    lines.append("Availability as of {}.".format(
+        now.strftime("%a %b %-d, %-I:%M %p")))
+
+    location = TICE_CREEK_ADDRESS
+    if cls.get("room"):
+        location = "{} - {}".format(cls["room"], TICE_CREEK_ADDRESS)
+
+    key = cls.get("mindbody_id") or "{}-{}".format(
+        cls.get("name"), cls["start_iso"])
+    body = {
+        "summary": "{} {} · {}".format(emoji, name, tag),
+        "description": "\n".join(lines),
+        "location": location,
+        "colorId": COLOR_FITNESS,
+        "extendedProperties": {"private": {
+            "bethbot": "class", "source": cls.get("source", "")}},
+    }
+    body.update(_timed(start - timedelta(minutes=early), end))
+    return _hash_id(CLASS_EVENT_PREFIX, key), body
+
+
+def build_movie_event(mov, config):
+    from scraper import MOVIE_LOCATION
+    start = datetime.fromisoformat(mov["start_iso"])
+    runtime = _minutes(mov.get("runtime"),
+                       config.get("movie_duration_minutes", 135))
+    end = start + timedelta(minutes=runtime)
+    early = config.get("early_start_minutes", 0)
+    title = mov["title"]
+    score = mov.get("rt_score")
+
+    lines = []
+    if mov.get("description"):
+        lines += [mov["description"], ""]
+    lines.append("Showtime: {} at {}".format(
+        _fmt_time(start), mov.get("venue") or "Peacock Hall"))
+    details = [d for d in (mov.get("movie_year"),
+                           "{} min".format(runtime) if mov.get("runtime")
+                           else "", mov.get("rating")) if d]
+    if details:
+        lines.append(" · ".join(details))
+    if mov.get("series"):
+        lines.append("Series: {}".format(mov["series"]))
+    if score:
+        lines.append("Rotten Tomatoes: {}{}".format(
+            score, " ({})".format(mov["rt_url"]) if mov.get("rt_url")
+            else ""))
+    lines.append("Free admission" if (mov.get("cost") or "Free") == "Free"
+                 else "Cost: {}".format(mov["cost"]))
+    lines.append("Source: myrossmoor.com/events-calendar")
+
+    eid = make_event_id("movie", "{}-{}-{}".format(
+        title, mov.get("date", ""), mov["start_iso"]))
+    body = {
+        "summary": "\U0001f3ac {}{}".format(
+            title, " \U0001f345 {}".format(score) if score else ""),
+        "description": "\n".join(lines),
+        "location": MOVIE_LOCATION,
+        "colorId": COLOR_MOVIE,
+    }
+    body.update(_timed(start - timedelta(minutes=early), end))
+    return eid, body
+
+
+def build_concert_event(evt, config):
+    from scraper import MYROSSMOOR_VENUE_LOCATIONS, ROSSMOOR_LOCATIONS
+    start = datetime.fromisoformat(evt["start_iso"])
+    end = start + timedelta(minutes=config.get("concert_duration_minutes",
+                                               120))
+    early = config.get("early_start_minutes", 0)
+    title = evt["title"]
+    venue = evt.get("venue") or evt.get("location_code") or "EC"
+    location = (MYROSSMOOR_VENUE_LOCATIONS.get(venue)
+                or ROSSMOOR_LOCATIONS.get(venue)
+                or "{}, Rossmoor, Walnut Creek, CA 94595".format(venue))
+    if "Spotlight" in (evt.get("event_type", "") + title):
+        emoji, display = "\U0001f3b5", title
+    else:
+        emoji, display = "\U0001f3b6", title
+
+    cost = evt.get("cost", "")
+    lines = ["{} at {}".format(_fmt_time(start), venue)]
+    if cost and cost != "Free":
+        lines.append("Tickets: {}".format(cost))
+        lines.append("Tickets at Recreation Dept, Gateway, "
+                     "Mon-Fri 8am-4:30pm")
+    else:
+        lines.append("Free admission")
+    lines.append("Source: myrossmoor.com/events-calendar")
+
+    eid = make_event_id("concert", "{}-{}-{}".format(
+        title, evt.get("date", ""), evt["start_iso"]))
+    body = {
+        "summary": "{} {}".format(emoji, display),
+        "description": "\n".join(lines),
+        "location": location,
+        "colorId": COLOR_CONCERT,
+    }
+    body.update(_timed(start - timedelta(minutes=early), end))
+    return eid, body
+
+
+def build_manual_event(evt):
+    start = datetime.fromisoformat("{}T{}".format(evt["date"],
+                                                  evt["start_time"]))
+    end = start + timedelta(hours=1)
+    if evt.get("end_time"):
+        try:
+            end = datetime.fromisoformat("{}T{}".format(evt["date"],
+                                                        evt["end_time"]))
+        except ValueError:
+            pass
+    if end <= start:
+        end = start + timedelta(hours=1)
+    lines = []
+    if evt.get("notes"):
+        lines.append(evt["notes"])
+    if evt.get("source"):
+        lines.append("From: {}".format(evt["source"]))
+    lines.append("Added from an email to bethcalendarupdate@gmail.com")
+    body = {
+        "summary": evt.get("title") or "Appointment",
+        "description": "\n".join(lines),
+        "location": evt.get("location", ""),
+    }
+    body.update(_timed(start, end))
+    key = evt.get("uid") or "{}-{}-{}".format(
+        evt.get("title"), evt["date"], evt["start_time"])
+    return _hash_id(MANUAL_EVENT_PREFIX, key), body
+
+
+# =========================================================================
+# Sync
+# =========================================================================
+
+def _category(eid, item):
+    if eid.startswith(CLASS_EVENT_PREFIX):
+        return "classes"
+    if eid.startswith(MANUAL_EVENT_PREFIX):
+        return "appointments"
+    if eid.startswith(LEGACY_MOVIE_PREFIX):
+        return "movies"
+    if eid.startswith(EVENT_ID_PREFIX):
+        color = item.get("colorId")
+        if color == COLOR_MOVIE:
+            return "movies"
+        if color == COLOR_CONCERT:
+            return "concerts"
+        return "legacy"   # old scraper-made fitness events
+    return None
+
+
+def _needs_update(old, new):
+    if old.get("status") == "cancelled":
+        return True
+    for k in ("summary", "location", "colorId"):
+        if (old.get(k) or "") != (new.get(k) or ""):
+            return True
+    # Ignore the "as of" timestamp so classes aren't rewritten every run
+    strip = lambda d: re.sub(r"Availability as of .*", "", d or "")
+    if strip(old.get("description")) != strip(new.get("description")):
+        return True
+    for k in ("start", "end"):
+        a = old.get(k, {}).get("dateTime")
+        b = new.get(k, {}).get("dateTime")
+        if not a or not b:
+            return True
+        da = datetime.fromisoformat(a)
+        db = datetime.fromisoformat(b).replace(tzinfo=PACIFIC)
+        if da.tzinfo is None:
+            da = da.replace(tzinfo=PACIFIC)
+        if da != db:
+            return True
+    return False
+
+
+def sync_to_google_calendar(classes, movies, concerts, config,
+                            class_coverage=None, appointments=None):
+    """Reconcile Beth's calendar with freshly scraped data.
+
+    Pass None for any source that failed to scrape: its events are left
+    exactly as they are. class_coverage maps schedule label (e.g.
+    "group_fitness") -> (first_date, last_date) actually fetched.
+
+    Returns (created, updated, deleted). Raises SyncError after doing
+    everything it safely can if any category hit a problem.
     """
     calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
     service = get_calendar_service()
-    default_dur = config.get("default_class_duration_minutes", 45)
-    movie_dur = config.get("movie_duration_minutes", 135)
-    concert_dur = config.get("concert_duration_minutes", 120)
-    early_start = config.get("early_start_minutes", 0)
+    now = _now()
+    problems = []
 
-    # Build fitness time ranges for conflict detection
-    fitness_ranges = []
-    for cls in (classes or []):
-        try:
-            fs = datetime.fromisoformat(cls["start_iso"])
-            fd = cls.get("duration_minutes", default_dur)
-            if fd <= 0:
-                fd = default_dur
-            fe = fs + timedelta(minutes=fd)
-            fitness_ranges.append((fs, fe))
-        except (ValueError, KeyError):
-            pass
+    # --- Build desired events per category ---
+    desired = {}          # eid -> body
+    desired_upcoming = {}  # category -> count of future desired events
+    reconcile = set()     # categories whose source succeeded
 
-    def conflicts_with_fitness(evt_start, evt_end):
-        for fs, fe in fitness_ranges:
-            if evt_start < fe and evt_end > fs:
-                return True
-        return False
-
-    # Collect all events we want to exist
-    desired_events = {}  # event_id -> event body
-
-    # --- Fitness classes ---
-    # NOTE: Fitness classes are NO LONGER managed by the scraper.
-    # The auto-booker (auto_book.py) is the sole source for fitness
-    # events. It only adds classes Beth is actually enrolled in or
-    # waitlisted for, with ✅/⏳ status indicators.
-    # Any old scraper-created fitness events (prefix "be0ca1" with
-    # fitness emoji) will be cleaned up by the deletion step below.
-    log.info("Skipping {} fitness classes (managed by auto-booker)".format(
-        len(classes or [])))
-
-    # --- Movies ---
-    for mov in (movies or []):
-        start_iso = mov.get("start_iso", "")
-        if not start_iso:
+    builders = [
+        ("classes", classes, lambda c: build_class_event(c, config, now)),
+        ("movies", movies, lambda m: build_movie_event(m, config)),
+        ("concerts", concerts, lambda c: build_concert_event(c, config)),
+        ("appointments", appointments, build_manual_event),
+    ]
+    for cat, items, build_fn in builders:
+        if items is None:
+            log.warning("  {}: source unavailable, leaving existing events "
+                        "untouched".format(cat))
             continue
-        try:
-            start = datetime.fromisoformat(start_iso)
-        except ValueError:
-            continue
+        reconcile.add(cat)
+        n = 0
+        for item in items:
+            try:
+                eid, body = build_fn(item)
+            except Exception as e:
+                log.warning("  Skipping bad {} entry {}: {}".format(
+                    cat, item.get("title") or item.get("name"), e))
+                continue
+            end = datetime.fromisoformat(body["end"]["dateTime"])
+            if end < now:
+                continue  # already over; don't clutter the past
+            desired[eid] = body
+            n += 1
+        desired_upcoming[cat] = n
+        log.info("  Desired {}: {}".format(cat, n))
+    if classes is not None and not class_coverage:
+        # No coverage info means we can't scope deletions safely
+        reconcile.discard("classes")
 
-        end = start + timedelta(minutes=movie_dur)
-        if conflicts_with_fitness(start, end):
-            continue
-
-        title = mov["title"]
-        movie_year = mov.get("movie_year", "")
-        display_name = "{} ({})".format(title, movie_year)
-
-        desc_parts = []
-        movie_desc = mov.get("description", "")
-        if movie_desc:
-            desc_parts.append(movie_desc)
-        show_time = start.strftime("%I:%M %p").lstrip("0")
-        desc_parts.append("Showtime: {} at Peacock Hall".format(show_time))
-        desc_parts.append("Free admission")
-        desc_parts.append(
-            "Auto-synced from rossmoor.com recreation calendar")
-
-        cal_start = start - timedelta(minutes=early_start)
-        eid = make_event_id("movie", "{}-{}-{}".format(
-            title, mov.get("date", ""), start_iso))
-
-        from scraper import MOVIE_LOCATION
-        desired_events[eid] = {
-            "summary": "\U0001f3ac {}".format(display_name),
-            "description": "\n".join(desc_parts),
-            "location": MOVIE_LOCATION,
-            "start": {
-                "dateTime": cal_start.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "end": {
-                "dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "colorId": COLOR_MOVIE,
-        }
-
-    # --- Concerts ---
-    for evt in (concerts or []):
-        start_iso = evt.get("start_iso", "")
-        if not start_iso:
-            continue
-        try:
-            start = datetime.fromisoformat(start_iso)
-        except ValueError:
-            continue
-
-        end = start + timedelta(minutes=concert_dur)
-        if conflicts_with_fitness(start, end):
-            continue
-
-        title = evt["title"]
-        event_type = evt.get("event_type", "Concert")
-        cost = evt.get("cost", "")
-        loc_code = evt.get("location_code", "EC")
-
-        from scraper import ROSSMOOR_LOCATIONS
-        location = ROSSMOOR_LOCATIONS.get(
-            loc_code, ROSSMOOR_LOCATIONS["EC"])
-
-        if "Spotlight" in event_type:
-            emoji = "\U0001f3b5"
-            display_name = "Spotlight: {}".format(title)
-        else:
-            emoji = "\U0001f3b6"
-            display_name = "Concert: {}".format(title)
-
-        desc_parts = []
-        show_time = start.strftime("%I:%M %p").lstrip("0")
-        desc_parts.append("{} at {}".format(show_time, loc_code))
-        if cost:
-            desc_parts.append("Tickets: {}".format(cost))
-        else:
-            desc_parts.append("Free admission")
-        desc_parts.append(
-            "Tickets at Recreation Dept, Gateway, Mon-Fri 8am-4:30pm")
-        desc_parts.append(
-            "Auto-synced from rossmoor.com recreation calendar")
-
-        cal_start = start - timedelta(minutes=early_start)
-        eid = make_event_id("concert", "{}-{}-{}".format(
-            title, evt.get("date", ""), start_iso))
-
-        desired_events[eid] = {
-            "summary": "{} {}".format(emoji, display_name),
-            "description": "\n".join(desc_parts),
-            "location": location,
-            "start": {
-                "dateTime": cal_start.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "end": {
-                "dateTime": end.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timeZone": "America/Los_Angeles",
-            },
-            "colorId": COLOR_CONCERT,
-        }
-
-    log.info("Desired events: {} movies, {} concerts (fitness managed "
-             "by auto-booker)".format(
-        sum(1 for e in desired_events.values()
-            if e["colorId"] == COLOR_MOVIE),
-        sum(1 for e in desired_events.values()
-            if e["colorId"] == COLOR_CONCERT),
-    ))
-
-    # --- Sync: find existing managed events ---
-    # Search a wide window: 7 days ago to 60 days from now
+    # --- Find existing managed events ---
     time_min = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
-    time_max = (datetime.utcnow() + timedelta(days=60)).isoformat() + "Z"
-
-    existing_events = {}
+    time_max = (datetime.utcnow() + timedelta(days=90)).isoformat() + "Z"
+    existing = {}
     page_token = None
     while True:
-        try:
-            resp = service.events().list(
-                calendarId=calendar_id,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=2500,
-                singleEvents=True,
-                pageToken=page_token,
-            ).execute()
-        except HttpError as e:
-            if e.resp.status == 429:
-                log.error("Google Calendar API quota exceeded (429) "
-                          "while listing events. Try again later.")
-                return 0, 0, 0
-            elif e.resp.status == 403:
-                log.error("Google Calendar API forbidden (403) "
-                          "while listing events. Check service account "
-                          "permissions for calendar: {}".format(calendar_id))
-                return 0, 0, 0
-            raise
-
+        resp = gcal_api_call(
+            service.events().list,
+            calendarId=calendar_id, timeMin=time_min, timeMax=time_max,
+            maxResults=2500, singleEvents=True, showDeleted=True,
+            pageToken=page_token)
         for item in resp.get("items", []):
             eid = item.get("id", "")
-            if eid.startswith(EVENT_ID_PREFIX):
-                existing_events[eid] = item
-
+            if eid.startswith(ALL_PREFIXES):
+                existing[eid] = item
         page_token = resp.get("nextPageToken")
         if not page_token:
             break
+    log.info("  Found {} existing managed events".format(len(existing)))
 
-    log.info("Found {} existing managed events on calendar".format(
-        len(existing_events)))
-
-    # --- Create or update ---
-    created = 0
-    updated = 0
-    for eid, body in desired_events.items():
-        if eid in existing_events:
-            # Check if update needed (compare key fields)
-            old = existing_events[eid]
-            needs_update = (
-                old.get("summary") != body["summary"]
-                or old.get("colorId") != body.get("colorId")
-                or old.get("description") != body.get("description")
-                or old.get("start", {}).get("dateTime") !=
-                body["start"]["dateTime"]
-                or old.get("end", {}).get("dateTime") !=
-                body["end"]["dateTime"]
-            )
-            if needs_update:
+    # --- Create / update ---
+    created = updated = 0
+    for eid, body in desired.items():
+        old = existing.get(eid)
+        try:
+            if old is None:
                 try:
-                    service.events().update(
-                        calendarId=calendar_id,
-                        eventId=eid,
-                        body=body,
-                    ).execute()
-                    updated += 1
+                    gcal_api_call(service.events().insert,
+                                  calendarId=calendar_id,
+                                  body=dict(body, id=eid))
+                    created += 1
+                    continue
                 except HttpError as e:
-                    if e.resp.status == 429:
-                        log.error("Google Calendar API quota exceeded "
-                                  "(429) during update. Stopping sync.")
-                        return created, updated, 0
-                    elif e.resp.status == 403:
-                        log.error("Google Calendar API forbidden (403) "
-                                  "during update. Check permissions.")
-                        return created, updated, 0
-                    log.warning("Failed to update event {}: {}".format(
-                        eid, e))
-        else:
-            body["id"] = eid
-            try:
-                service.events().insert(
-                    calendarId=calendar_id,
-                    body=body,
-                ).execute()
-                created += 1
-            except HttpError as e:
-                if e.resp.status == 429:
-                    log.error("Google Calendar API quota exceeded "
-                              "(429) during insert. Stopping sync.")
-                    return created, updated, 0
-                elif e.resp.status == 403:
-                    log.error("Google Calendar API forbidden (403) "
-                              "during insert. Check permissions.")
-                    return created, updated, 0
-                elif e.resp.status == 409 or "duplicate" in str(e).lower():
-                    # Event already exists but wasn't in our query window;
-                    # update it instead.
-                    log.info("Event {} already exists, updating".format(eid))
-                    try:
-                        del body["id"]
-                        service.events().update(
-                            calendarId=calendar_id,
-                            eventId=eid,
-                            body=body,
-                        ).execute()
-                        updated += 1
-                    except HttpError as e2:
-                        if e2.resp.status in (429, 403):
-                            log.error("Google Calendar API error ({}) "
-                                      "during fallback update. Stopping "
-                                      "sync.".format(e2.resp.status))
-                            return created, updated, 0
-                        log.warning("Failed to update event {}: {}".format(
-                            eid, e2))
-                    except Exception as e2:
-                        log.warning("Failed to update event {}: {}".format(
-                            eid, e2))
-                else:
-                    log.warning("Failed to create event {}: {}".format(
-                        eid, e))
-            except Exception as e:
-                if "409" in str(e) or "duplicate" in str(e).lower():
-                    log.info("Event {} already exists, updating".format(eid))
-                    try:
-                        del body["id"]
-                        service.events().update(
-                            calendarId=calendar_id,
-                            eventId=eid,
-                            body=body,
-                        ).execute()
-                        updated += 1
-                    except Exception as e2:
-                        log.warning("Failed to update event {}: {}".format(
-                            eid, e2))
-                else:
-                    log.warning("Failed to create event {}: {}".format(
-                        eid, e))
+                    if e.resp.status != 409:
+                        raise
+                    # Exists outside our query window (or was deleted):
+                    # fall through to update, which also resurrects it.
+            elif not _needs_update(old, body):
+                continue
+            gcal_api_call(service.events().update, calendarId=calendar_id,
+                          eventId=eid, body=dict(body, status="confirmed"))
+            updated += 1
+        except HttpError as e:
+            if e.resp.status in (403, 429):
+                raise SyncError("Calendar API refused writes ({}): {}"
+                                .format(e.resp.status, e))
+            log.warning("  Failed to write {} ({}): {}".format(
+                eid, body.get("summary"), e))
+            problems.append("write failed: {}".format(body.get("summary")))
 
-    # --- Delete events we no longer want ---
+    # --- Delete what's no longer wanted (with guards) ---
+    to_delete = {}
+    upcoming = {}
+    for eid, item in existing.items():
+        if item.get("status") == "cancelled":
+            continue
+        cat = _category(eid, item)
+        start = _event_start(item)
+        if cat is None or start is None or start <= now:
+            continue  # rule 3: never delete started/past events
+        upcoming.setdefault(cat, 0)
+        upcoming[cat] += 1
+        if eid in desired:
+            continue
+        if cat == "legacy":
+            to_delete.setdefault(cat, []).append(eid)
+            continue
+        if cat not in reconcile:
+            continue  # rule 2
+        if cat == "classes":
+            props = item.get("extendedProperties", {}).get("private", {})
+            span = class_coverage.get(props.get("source", ""))
+            day = start.strftime("%Y-%m-%d")
+            if not span or not (span[0] <= day <= span[1]):
+                continue  # rule 4
+        to_delete.setdefault(cat, []).append(eid)
+
     deleted = 0
-    for eid in existing_events:
-        if eid not in desired_events:
+    for cat, eids in to_delete.items():
+        # Swapping events for replacements is fine; losing most of a
+        # category with nothing to replace it is what a broken scrape
+        # looks like.
+        total = upcoming.get(cat, 0)
+        if (cat != "legacy" and len(eids) > MASS_DELETE_MIN
+                and desired_upcoming.get(cat, 0)
+                < MASS_DELETE_FRACTION * total):
+            msg = ("{}: refusing to delete {} of {} upcoming events when "
+                   "only {} replacements were scraped (circuit breaker). "
+                   "Check the scrape.".format(
+                       cat, len(eids), total, desired_upcoming.get(cat, 0)))
+            log.error("  " + msg)
+            problems.append(msg)
+            continue
+        for eid in eids:
             try:
-                service.events().delete(
-                    calendarId=calendar_id,
-                    eventId=eid,
-                ).execute()
+                gcal_api_call(service.events().delete,
+                              calendarId=calendar_id, eventId=eid)
                 deleted += 1
+                log.info("  Removed ({}): {}".format(
+                    cat, existing[eid].get("summary", "")))
             except HttpError as e:
-                if e.resp.status == 429:
-                    log.error("Google Calendar API quota exceeded "
-                              "(429) during delete. Stopping sync.")
-                    break
-                elif e.resp.status == 403:
-                    log.error("Google Calendar API forbidden (403) "
-                              "during delete. Check permissions.")
-                    break
-                log.warning("Failed to delete event {}: {}".format(eid, e))
-            except Exception as e:
-                log.warning("Failed to delete event {}: {}".format(eid, e))
+                if e.resp.status in (404, 410):
+                    continue
+                log.warning("  Failed to delete {}: {}".format(eid, e))
 
     log.info("Sync complete: {} created, {} updated, {} deleted".format(
         created, updated, deleted))
+    if problems:
+        raise SyncError("; ".join(problems))
     return created, updated, deleted
 
 

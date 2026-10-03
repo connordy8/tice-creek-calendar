@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write    # keep-alive + trigger sync after new events
 
 # Prevent overlapping with sync workflow (both push to same repo)
 concurrency:
@@ -30,6 +31,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # See sync.yml: GitHub disables scheduled workflows after 60 days
+      # without commits. Each workflow keeps the other alive.
+      - name: Keep scheduled workflows alive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in sync.yml check-email.yml; do
+            gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf"
+          done
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -47,6 +59,8 @@ jobs:
         run: python email_handler.py
 
       - name: Commit email updates if any
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -59,5 +73,8 @@ jobs:
             echo "No new email updates"
           else
             git commit -m "Email calendar update [$(date -u +'%Y-%m-%d %H:%M UTC')]"
-            git push
+            git pull --rebase --autostash && git push
+            # Pushes made with GITHUB_TOKEN don't trigger workflows, so
+            # kick the calendar sync explicitly.
+            gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" || echo "couldn't trigger sync"
           fi

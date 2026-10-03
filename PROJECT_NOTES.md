@@ -2,7 +2,7 @@
 
 Living document capturing the goals, decisions, gotchas, and steers behind this project. Future Claude sessions (and future Connor) should read this before making changes so context isn't lost.
 
-Last updated: 2026-04-17
+Last updated: 2026-10-03
 
 ---
 
@@ -11,10 +11,10 @@ Last updated: 2026-04-17
 An automated calendar system for Beth (Connor's mom) at Rossmoor 55+ community in Walnut Creek, CA. It keeps her Google Calendar continuously in sync with three sources:
 
 1. **Tice Creek Fitness Center** — classes (fitness + aquatics) scraped from Mindbody widgets
-2. **Rossmoor Peacock Hall** — movies and concerts scraped from rossmoor.com
+2. **Rossmoor Peacock Hall** — movies and concerts scraped from myrossmoor.com/events-calendar
 3. **Email-based manual events** — Connor forwards emails (e.g. appointments) and Claude parses them into calendar entries
 
-On top of scraping, the system also **auto-books** classes on Beth's behalf the moment registration windows open, and **alerts Connor** at `connordy@gmail.com` when anything goes wrong.
+Since May 2026 the system does **not** book classes. It *lists* every class Beth likes, with sign-up status in the title ("sign up · 4 left", "FULL · waitlist", "drop-in", "sign-up opens Mon"), and Beth signs up herself. Movies show the Rotten Tomatoes score in the title and a plot summary in the description.
 
 - **Local path:** `/Users/connordy/tice-creek-calendar`
 - **GitHub:** `https://github.com/connordy8/tice-creek-calendar`
@@ -53,34 +53,30 @@ These came out of many rounds of feedback. Treat them as load-bearing — don't 
 ## Architecture
 
 ```
-Tice Creek (Mindbody widgets)  ─┐
-Rossmoor movies/concerts       ─┼─>  scraper.py  ─>  ICS file  ─>  gcal_sync.py  ─>  Google Calendar
-Forwarded emails               ─┴─>  email_handler.py (Claude Sonnet parses) ─────┘
-                                                                                   ↑
-                                     auto_book.py (Playwright → Mindbody) ─────────┘
-                                     healthcheck.py (validates calendar)
-                                     notify.py (SMTP alerts on failure)
+Tice Creek (Mindbody branded-web widget, plain HTTP) ── tice_schedule.py ─┐
+Rossmoor movies/concerts (myrossmoor.com, plain HTTP) ── scraper.py ──────┼─> gcal_sync.py ─> Google Calendar
+  └ RT scores + plot summaries ── movie_info.py (cache: movie_info.json)  │
+Forwarded emails ── email_handler.py ─> manual_events.json ───────────────┘
 ```
 
-Google Calendar is written to via a service account (key stored in GitHub Secrets, never committed).
+`scraper.py` is the entry point (run by `sync.yml`). No Playwright, no Mindbody login. Google Calendar is written via a service account (key in GitHub Secrets).
 
 ### Key files
 | File | Role |
 |---|---|
-| `scraper.py` | Playwright scraper: Tice Creek fitness + aquatics + Rossmoor entertainment. Has retry logic. |
-| `auto_book.py` | Playwright auto-booker. Logs in to Mindbody, books target classes, marks calendar ✅/⏳. |
-| `gcal_sync.py` | Pushes ICS events into Google Calendar. Has API retry wrapper. |
-| `email_handler.py` | IMAPs Beth's dedicated inbox (`bethcalendarupdate@gmail.com`). Two-stage Claude pipeline: classifier → extractor. Confidence-gated. See "Email handler" section below. |
-| `notify.py` | Sends failure alerts via SMTP to `connordy@gmail.com`. |
-| `healthcheck.py` | Cron job that asserts the calendar has events in the next 7 days. |
+| `scraper.py` | Entry point. Fetches classes + Rossmoor events, filters to Beth's prefs, calls `gcal_sync`. Each source fails independently; exits 1 at the end if any failed. |
+| `tice_schedule.py` | Fetches the Tice Creek schedule (group fitness + aquatics) from Mindbody's branded-web widget. Parses the Next.js flight payload. |
+| `movie_info.py` | Rotten Tomatoes score (RT search page) + Wikipedia summary, cached in `movie_info.json`. Hand-edit an entry and set `"locked": true` to pin it. |
+| `gcal_sync.py` | Reconciles the calendar. Read its docstring: the safety rules live there. |
+| `email_handler.py` | IMAPs `bethcalendarupdate@gmail.com`. Two-stage Claude pipeline: classifier → extractor. Confidence-gated. Writes `manual_events.json`. |
 | `config.yaml` | Target class list, filters, display preferences. Single source of truth for Beth's prefs. |
-| `manual_events.json` | One-off events added via the `add-event.yml` workflow. |
+| `auto_book.py` | RETIRED (manual-only). Old Playwright booker; its login broke in May 2026. |
+| `canary.py`, `weekly_audit.py` | Manual-only monitors. Still use the old Playwright scraper, so currently broken. |
 
 ### Workflows (`.github/workflows/`)
-- `scraper.yml` — periodic scrape + calendar sync
-- `auto-book.yml` — **18 runs/day** including midnight (12:00, 12:15, 12:30, 1:00 AM PT) and early morning (5:00, 5:15, 5:30 AM PT) flurries to catch Mindbody booking windows the moment they open
-- `check-email.yml` — polls Gmail for forwarded events
-- `healthcheck.yml` — asserts calendar has content; alerts if empty
+- `sync.yml` — every 3 hours 6 AM–9 PM PT: email check + scrape + calendar sync. Also re-enables itself and `check-email.yml` (keep-alive).
+- `check-email.yml` — every 30 min: polls Gmail for forwarded events, then triggers `sync.yml` if anything changed.
+- `auto-book.yml` — retired, manual-only.
 - `dump-calendar.yml` — manual: prints the next 7 days (used for "is the calendar up to date?" checks)
 - `add-event.yml` — manual: add a one-off event by form input
 - `remove-events.yml` — manual: delete events matching a keyword (used to purge pickleball)
@@ -90,16 +86,25 @@ Google Calendar is written to via a service account (key stored in GitHub Secret
 
 ## Event ID scheme
 
-Deterministic MD5 hashes so reruns update instead of creating duplicates.
+Deterministic MD5 hashes so reruns update instead of creating duplicates. `gcal_sync` only ever touches events with these prefixes:
 
-- `be0ca1…` — events created by `scraper.py`
-- `ab00ce0d…` — events created by `auto_book.py`
+- `be0ca1…` — movies + concerts (hash of title/date/time)
+- `be0cc3…` — Tice Creek class listings (hash of the Mindbody class instance id; `extendedProperties.private.source` = `group_fitness`/`aquatics`)
+- `be0cd4…` — appointments from `manual_events.json` (hash of the entry's `uid`)
+- `be0cb2…` — legacy one-off movie events (Oct 2026), swapped out by the first good sync
+- `ab00ce0d…` — legacy `auto_book.py` events
 
 **Gotcha:** if you change the hash inputs, you'll orphan existing events. That's what caused the duplicate-events incident in April 2026. Always run `cleanup-dupes.yml` after such a change.
 
 ---
 
 ## Mindbody quirks (hard-won knowledge)
+
+- **May 2026: Tice Creek switched to Mindbody's "branded web" widget.** The `<healcode-widget>` on their pages now just injects an iframe at `go.mindbodyonline.com/book/widgets/schedules/view/<id>/schedule`. `tice_schedule.py` resolves `<id>` at runtime (healcode id → `widgets.mindbodyonline.com/widgets/schedules/<healcode>.json`), falling back to `3355016f2c5` (group fitness) / `3355017f2c5` (aquatics).
+- The widget page embeds the next 7 days (aquatics: ~4 weeks) as JSON in `self.__next_f.push(...)` chunks, under `"initialClasses"`. Repeated objects are de-duplicated into `"$2f"`-style references to other payload rows; resolve them or staff/instructor data goes missing.
+- `bookable` is the reliable "can sign up now" flag. `numberRegistered` often exceeds `capacity` (the widget then shows "Only -6 spots left!"), so only show a spot count when it's between 1 and capacity.
+- `capacity == 0` means no online sign-up: CLUB classes and Water Aerobics. These are listed as drop-in.
+- Sign-up opens 7 days ahead at 8 AM (`bookingWindowStart`).
 
 - Fitness classes use `sLoc=0`. Aquatics classes use `sLoc=1`. **You must scan both** — missing `sLoc=1` is why Monday Aquacise was missing for a while.
 - "Functional Fitness" and "Functional Strength" are different class name strings; keep both in the include list.
@@ -198,6 +203,10 @@ The system used to "succeed" green even while quietly dropping classes from Beth
 
 ---
 
+## Calendar safety rules (Oct 2026)
+
+See the `gcal_sync.py` docstring. In short: only touch our own ID prefixes; a source that failed (None) leaves its events alone; never delete started events; class deletions are scoped to the dates the widget covered; circuit breaker refuses to delete most of a category when the scrape came back thin. The old `auto_book.py` deleted ANY event whose title contained a class keyword ("chi", "mat", "water"...). Never reintroduce keyword-based deletion.
+
 ## Reliability steers
 
 Connor's standing direction: **"Make it bulletproof. Don't crash on bad data. Alert me when something's wrong."**
@@ -211,6 +220,7 @@ Connor's standing direction: **"Make it bulletproof. Don't crash on bad data. Al
 
 ### What NOT to do
 - Don't `exit(1)` on non-critical errors — it causes the whole workflow to fail and Connor gets spurious alerts. Log + alert, then continue.
+  - Exception: `scraper.py` exits 1 when a whole source is down (after syncing everything that worked). A dead source going unnoticed is how Beth went five months without classes.
 - Don't commit `.env.production` or anything with the service account private key. `.env*` is in `.gitignore`.
 - Don't use `--no-verify` or skip pre-commit hooks.
 - Don't amend commits — create new ones.
@@ -236,6 +246,11 @@ Phone reminders were previously in this repo and have been **removed** (Apr 2026
 | Pickleball appearing | In `TARGET_CLASSES` | Removed from config + ran `remove-events.yml` |
 | 80 failure emails | Phone reminder workflow referenced deleted script | Removed workflow file |
 | Silent workflow "successes" doing nothing | No validation of output | Added `healthcheck.py` cron |
+| No classes on calendar May 12 – Oct 3 2026 | Tice Creek moved to Mindbody branded-web widget; Playwright scraper found 0 classes and auto-book couldn't find the login form. Alerts had been turned off, so nobody noticed | `tice_schedule.py` (plain HTTP, no login); sync exits non-zero when a source fails |
+| No movies Jun 30 – Oct 3 2026 | 0 fitness classes made `scraper.py` exit before reaching movies; then MyRossmoor changed its data format (`movies=[...]` instead of `months=[...]`) | Sources sync independently; parser handles both formats |
+| All workflows stopped Aug 9 2026 | GitHub disables scheduled workflows after 60 days without commits | Keep-alive step in `sync.yml` + `check-email.yml` |
+| Forwarded appointments never reached the calendar (Mar–Oct 2026) | `gcal_sync` stopped syncing the class list (where email "add" events were merged) when auto-book took over fitness | Appointments are their own category (`be0cd4`) |
+| Scrape failure would wipe movies/concerts | Failed scrape returned `[]`, sync deleted everything not in it | Failures return None; circuit breaker |
 
 ---
 
@@ -245,7 +260,7 @@ Phone reminders were previously in this repo and have been **removed** (Apr 2026
 - **"List activities for the next week"** → Same as above.
 - **"Add this appointment"** (often with a screenshot) → Use `add-event.yml` workflow with form fields, OR commit to `manual_events.json` if it's a recurring thing.
 - **"Remove X"** → Use `remove-events.yml` with the keyword.
-- **"Why didn't X get booked?"** → Check `auto-book.yml` run logs. Could be: class not in `include_classes`, registration window hadn't opened yet, or Mindbody waitlisted her.
+- **"Why isn't class X on her calendar?"** → Check the latest `sync.yml` log ("Beth's classes this period"). Could be: not in `include_classes`, before `earliest_hour`, cancelled, or beyond the widget's 7-day window.
 
 ---
 
@@ -264,6 +279,6 @@ Phone reminders were previously in this repo and have been **removed** (Apr 2026
 
 - **Read this doc first.** It captures decisions that aren't obvious from the code.
 - **Don't silently change Beth's preferences** (class list, earliest hour, early-start offset). Ask.
-- **Test via GitHub Actions, not locally.** Connor's Mac doesn't have the secrets or Playwright browsers configured; local runs will mislead you.
+- **Scrapers can be tested locally** (`python tice_schedule.py` prints the parsed week; no secrets needed). Calendar writes need the GitHub secrets, so test those via Actions.
 - **When in doubt, alert don't crash.** Connor would rather get an email than have the calendar go dark.
 - **Keep this file updated.** When you make a non-obvious decision or hit a gotcha, add a row to the relevant section.

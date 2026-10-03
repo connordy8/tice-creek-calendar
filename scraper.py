@@ -23,7 +23,6 @@ from typing import Optional, List, Dict
 from zoneinfo import ZoneInfo
 
 import yaml
-from playwright.sync_api import sync_playwright
 
 # --- Configuration -------------------------------------------------------
 
@@ -33,11 +32,6 @@ log = logging.getLogger(__name__)
 PACIFIC = ZoneInfo("America/Los_Angeles")
 STUDIO_ID = 72039
 LOCATION = "Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595"
-
-SCHEDULE_PAGES = {
-    "group_fitness": "https://www.ticefitnesscenter.com/schedule/",
-    "aquatics": "https://www.ticefitnesscenter.com/aquatic-schedule/",
-}
 
 ROSSMOOR_MOVIE_PDF_URL = (
     "https://rossmoor.com/residents/recreation/movies-and-special-events/"
@@ -60,8 +54,6 @@ ROSSMOOR_LOCATIONS = {
     "CR": "Creekside, Rossmoor, Walnut Creek, CA 94595",
 }
 
-DISCOVER_MODE = "--discover" in sys.argv
-HEADLESS = "--no-headless" not in sys.argv
 
 
 def load_config(path="config.yaml"):
@@ -83,173 +75,14 @@ def load_config(path="config.yaml"):
 #   - <div class="bw-session__name">Water Aerobics</div>
 #   - <div class="bw-session__staff">CATHY STEEN</div>
 
-def parse_bw_widget_html(html, label=""):
-    """Parse classes from Branded Web widget HTML."""
-    classes = []
-
-    # Match each bw-session div and its content
-    session_pattern = (
-        r'(<div[^>]*class="bw-session"[^>]*>)'
-        r'(.*?)'
-        r'(?=<div[^>]*class="bw-session"|<div class="bw-widget__day|</body>)'
-    )
-    matches = re.findall(session_pattern, html, re.DOTALL)
-
-    for opening_tag, content in matches:
-        # Machine-readable class name from data attribute
-        raw_name_match = re.search(
-            r'data-bw-widget-mbo-class-name="([^"]+)"', opening_tag)
-        raw_name = raw_name_match.group(1) if raw_name_match else ""
-
-        # Start time (ISO datetime)
-        start_match = re.search(r'hc_starttime[^>]*datetime="([^"]+)"', content)
-        if not start_match:
-            continue
-        start_iso = start_match.group(1)  # e.g., "2026-02-16T10:00"
-
-        # End time (ISO datetime)
-        end_match = re.search(r'hc_endtime[^>]*datetime="([^"]+)"', content)
-        end_iso = end_match.group(1) if end_match else ""
-
-        # Display name (text inside .bw-session__name, minus the type span)
-        name_block = re.search(
-            r'class="bw-session__name">(.*?)</div>', content, re.DOTALL)
-        display_name = ""
-        if name_block:
-            text = re.sub(r'<span[^>]*>.*?</span>', '', name_block.group(1))
-            display_name = re.sub(r'<[^>]+>', '', text).strip()
-
-        if not display_name:
-            display_name = raw_name.replace("_", " ").title()
-
-        # Instructor
-        staff_block = re.search(
-            r'class="bw-session__staff"[^>]*>(.*?)</div>', content, re.DOTALL)
-        instructor = ""
-        if staff_block:
-            instructor = re.sub(r'<[^>]+>', '', staff_block.group(1)).strip()
-
-        # Room/Location (bw-session__location or similar)
-        room = ""
-        loc_block = re.search(
-            r'class="bw-session__location"[^>]*>(.*?)</div>',
-            content, re.DOTALL)
-        if loc_block:
-            room = re.sub(r'<[^>]+>', '', loc_block.group(1)).strip()
-        if not room:
-            # Also try data attribute
-            loc_attr = re.search(
-                r'data-bw-widget-mbo-location="([^"]+)"', opening_tag)
-            if loc_attr:
-                room = loc_attr.group(1).strip()
-
-        # Parse the start datetime
-        try:
-            start_dt = datetime.fromisoformat(start_iso)
-        except ValueError:
-            continue
-
-        cls = {
-            "name": display_name,
-            "raw_name": raw_name,
-            "start_iso": start_iso,
-            "end_iso": end_iso,
-            "date": start_dt.strftime("%Y-%m-%d"),
-            "day": start_dt.strftime("%A"),
-            "time": start_dt.strftime("%I:%M %p").lstrip("0"),
-            "start_hour": start_dt.hour,
-            "instructor": instructor,
-            "room": room,
-            "source": label,
-        }
-
-        # Parse end time for duration
-        if end_iso:
-            try:
-                end_dt = datetime.fromisoformat(end_iso)
-                cls["end_time"] = end_dt.strftime("%I:%M %p").lstrip("0")
-                cls["duration_minutes"] = int(
-                    (end_dt - start_dt).total_seconds() / 60)
-            except ValueError:
-                pass
-
-        classes.append(cls)
-
-    return classes
-
-
-def scrape_page(page, url, label, max_retries=3):
-    """Load a schedule page and extract classes from the bw-widget.
-
-    Retries up to max_retries times if no classes are found, with
-    increasing wait times to handle slow widget loading.
-    """
-    for attempt in range(1, max_retries + 1):
-        log.info("Loading: {} (attempt {}/{})".format(url, attempt, max_retries))
-        try:
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        except Exception as e:
-            log.warning("  Page load issue: {}".format(e))
-            if attempt < max_retries:
-                page.wait_for_timeout(5000)
-                continue
-
-        # Wait for the widget to render (longer on retries)
-        wait_ms = 15000 + (attempt - 1) * 10000
-        page.wait_for_timeout(wait_ms)
-
-        all_classes = []
-
-        # Try main page HTML
-        html = page.content()
-        classes = parse_bw_widget_html(html, label)
-        if classes:
-            log.info("  Found {} classes in main frame".format(len(classes)))
-            all_classes.extend(classes)
-
-        # Also check iframes (the widget usually lives in an iframe)
-        for i, frame in enumerate(page.frames):
-            if frame == page.main_frame:
-                continue
-            try:
-                frame_html = frame.content()
-                classes = parse_bw_widget_html(frame_html, label)
-                if classes:
-                    log.info("  Found {} classes in frame {} ({})".format(
-                        len(classes), i, frame.url[:80]))
-                    all_classes.extend(classes)
-            except Exception as e:
-                log.debug("  Frame {} error: {}".format(i, e))
-
-        if all_classes:
-            return all_classes
-
-        if attempt < max_retries:
-            log.warning("  No classes found, retrying...")
-            # Save debug screenshot on failed attempt
-            Path("debug").mkdir(exist_ok=True)
-            page.screenshot(
-                path="debug/{}_attempt{}.png".format(label, attempt))
-
-    log.warning("  No classes found after {} attempts".format(max_retries))
-    # Save final debug info
-    Path("debug").mkdir(exist_ok=True)
-    page.screenshot(path="debug/{}_final_fail.png".format(label))
-    with open("debug/{}_final_fail.html".format(label), "w") as f:
-        f.write(page.content())
-
-    return []
-
-
-# =========================================================================
-# Filtering
-# =========================================================================
-
 def filter_classes(classes, config):
     raw_include = config.get("include_classes", [])
     exclude = [c.lower().strip() for c in config.get("exclude_classes", []) if c]
     earliest = config.get("earliest_hour")
     latest = config.get("latest_hour")
+    # e.g. {"zumba": 10}: Zumba is worth getting up for at 10 AM
+    hour_overrides = {k.lower(): v for k, v in
+                      (config.get("earliest_hour_overrides") or {}).items()}
 
     # Normalise include rules: each becomes {name: str, instructor: str|None}
     include_rules = []
@@ -265,11 +98,11 @@ def filter_classes(classes, config):
                 "instructor": None,
             })
 
-    if not include_rules and not exclude and earliest is None and latest is None:
-        return classes
 
     filtered = []
     for cls in classes:
+        if cls.get("cancelled"):
+            continue
         nm = cls.get("name", "").lower()
         raw = cls.get("raw_name", "").lower()
         combined = nm + " " + raw
@@ -291,7 +124,9 @@ def filter_classes(classes, config):
 
         hour = cls.get("start_hour")
         if hour is not None:
-            if earliest is not None and hour < earliest:
+            floor = next((h for k, h in hour_overrides.items()
+                          if k in combined), earliest)
+            if floor is not None and hour < floor:
                 continue
             if latest is not None and hour >= latest:
                 continue
@@ -391,6 +226,76 @@ def _fetch_events_page(url, timeout=30):
     return html, final_url
 
 
+def _b64(s):
+    import base64
+    return base64.b64decode(s + "=" * (-len(s) % 4)).decode(
+        "utf-8", errors="replace")
+
+
+def _is_events_js(js):
+    """Does this script hold the events data, in either known format?"""
+    return ("movies" in js and (
+        "monthName" in js or re.search(r"\bmovies\s*=\s*\[", js)))
+
+
+def _parse_months(events_js):
+    """Return [{monthName, year, monthIdx, movies, events}, ...].
+
+    Two page formats seen so far:
+      May 2026:  months=[{monthName, year, monthIdx, movies, events}, ...]
+      Oct 2026:  movies=[...],events=[...] for one month, with the month
+                 only in the calendar builder: new Date(2026,9,1)
+    """
+    import json as _json
+
+    m = re.search(
+        r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;\s*(?:let|var|const)\s+af",
+        events_js, re.DOTALL) or re.search(
+        r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;", events_js, re.DOTALL)
+    if m:
+        return _json.loads(m.group(1))
+
+    decoder = _json.JSONDecoder()
+
+    def _array(name):
+        mm = re.search(r"\b{}\s*=\s*(?=\[)".format(name), events_js)
+        if not mm:
+            return None
+        return decoder.raw_decode(events_js, mm.end())[0]
+
+    movies = _array("movies")
+    if movies is None:
+        raise RuntimeError("Couldn't find months=[...] or movies=[...] "
+                           "in events script")
+    events = _array("events") or []
+
+    # The grid is drawn from new Date(YEAR, MONTH_IDX, 1). Fall back to
+    # the "October 2026 Special Events" style heading text if needed.
+    dm = re.search(r"new Date\(\s*(\d{4})\s*,\s*(\d{1,2})\s*,\s*1\s*\)",
+                   events_js)
+    if dm:
+        year, month_idx = int(dm.group(1)), int(dm.group(2))
+    else:
+        hm = re.search(
+            r"'(January|February|March|April|May|June|July|August|"
+            r"September|October|November|December) '\s*\+?\s*(\d{4})|"
+            r"(January|February|March|April|May|June|July|August|"
+            r"September|October|November|December) (\d{4})", events_js)
+        if not hm:
+            raise RuntimeError("Couldn't determine which month the "
+                               "events data is for")
+        name = hm.group(1) or hm.group(3)
+        year = int(hm.group(2) or hm.group(4))
+        month_idx = datetime.strptime(name, "%B").month - 1
+    return [{
+        "monthName": datetime(year, month_idx + 1, 1).strftime("%B"),
+        "year": year,
+        "monthIdx": month_idx,
+        "movies": movies,
+        "events": events,
+    }]
+
+
 def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
     """Scrape the MyRossmoor Recreation Department events page.
 
@@ -420,17 +325,16 @@ def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
         anywhere, either in plain HTML or inside a base64 script?"""
         if not html_blob:
             return False
-        if "monthName" in html_blob and "movies" in html_blob:
+        if _is_events_js(html_blob):
             return True
         for s in re.findall(
                 r'data:text/javascript;base64,([A-Za-z0-9+/=]+)',
                 html_blob):
             try:
-                decoded = base64.b64decode(s).decode(
-                    "utf-8", errors="ignore")
+                decoded = _b64(s)
             except Exception:
                 continue
-            if "monthName" in decoded and "movies" in decoded:
+            if _is_events_js(decoded):
                 return True
         return False
 
@@ -472,11 +376,10 @@ def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
     events_js = None
     for b64 in b64_scripts:
         try:
-            decoded = base64.b64decode(b64).decode("utf-8",
-                                                   errors="replace")
+            decoded = _b64(b64)
         except Exception:
             continue
-        if "monthName" in decoded and "movies" in decoded:
+        if _is_events_js(decoded):
             events_js = decoded
             break
 
@@ -485,19 +388,7 @@ def scrape_myrossmoor_events(url=MYROSSMOOR_EVENTS_URL):
             "Couldn't find the events data script on {}. The page "
             "structure may have changed.".format(url))
 
-    # Extract the months=[...] array
-    m = re.search(
-        r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;\s*(?:let|var|const)\s+af",
-        events_js, re.DOTALL)
-    if not m:
-        m = re.search(
-            r"months\s*=\s*(\[\s*\{.*?\}\s*\])\s*;",
-            events_js, re.DOTALL)
-    if not m:
-        raise RuntimeError(
-            "Couldn't find months=[...] array in events script")
-
-    months = _json.loads(m.group(1))
+    months = _parse_months(events_js)
     log.info("  Parsed {} month(s)".format(len(months)))
 
     movies = []
@@ -923,42 +814,14 @@ def _parse_showtimes(text, year, month, day):
     return parsed
 
 
-def fetch_movie_description(title, year):
-    """Fetch a 1-3 sentence movie description from Wikipedia."""
-    import urllib.request
-    import urllib.parse
-
-    search_terms = [
-        "{} ({} film)".format(title, year),
-        "{} (film)".format(title),
-        title,
-    ]
-
-    for term in search_terms:
-        encoded = urllib.parse.quote(term.replace(' ', '_'))
-        url = (
-            "https://en.wikipedia.org/api/rest_v1/page/summary/{}"
-            .format(encoded))
-        try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "TiceCreekCalendar/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
-                extract = data.get("extract", "")
-                if extract and len(extract) > 20:
-                    sentences = re.split(r'(?<=[.!?])\s+', extract)
-                    desc = ' '.join(sentences[:3])
-                    if len(desc) > 500:
-                        desc = desc[:497] + "..."
-                    return desc
-        except Exception:
-            continue
-
-    return ""
-
-
 def scrape_entertainment(config):
-    """Scrape Rossmoor movie + concert listings and return evening events."""
+    """Scrape Rossmoor movie + concert listings and return evening events.
+
+    Returns (movies, concerts). Either is None when that source could
+    not be scraped, which tells the calendar sync to leave existing
+    events alone rather than treat "no data" as "everything was
+    cancelled" and delete them.
+    """
     include_movies = config.get("include_movies", True)
     include_concerts = config.get("include_concerts", True)
 
@@ -966,7 +829,8 @@ def scrape_entertainment(config):
         log.info("Movies and concerts disabled in config, skipping")
         return [], []
 
-    min_hour = config.get("movie_earliest_hour", 18)  # 6 PM default
+    movie_hour = config.get("movie_earliest_hour", 19)
+    concert_hour = config.get("concert_earliest_hour", 18)
 
     # Primary source: MyRossmoor events page (JSON in inline script).
     # Falls back to the legacy PDF parser only if the new source fails
@@ -976,56 +840,49 @@ def scrape_entertainment(config):
     except Exception as e:
         log.warning("MyRossmoor scrape failed ({}), trying legacy PDF"
                     .format(e))
+        pdf_path = None
         try:
             pdf_path = download_movie_pdf()
             all_movies, all_concerts = parse_recreation_pdf(pdf_path)
         except Exception as e2:
-            log.warning("Legacy PDF source also failed: {}".format(e2))
-            return [], []
+            log.error("Legacy PDF source also failed: {}".format(e2))
+            return None, None
         finally:
-            import os
-            try:
-                os.unlink(pdf_path)  # noqa
-            except (OSError, NameError):
-                pass
+            if pdf_path:
+                try:
+                    os.unlink(pdf_path)
+                except OSError:
+                    pass
+        # The legacy URL now redirects to a marketing page. Never trust
+        # a thin result from it: that's how calendars get wiped.
+        if len(all_movies) + len(all_concerts) < MIN_EXPECTED_TOTAL_EVENTS:
+            log.error("Legacy PDF returned only {} events; ignoring".format(
+                len(all_movies) + len(all_concerts)))
+            return None, None
 
     # --- Filter movies to evening showings ---
     evening_movies = []
     if include_movies:
-        evening_movies = [m for m in all_movies if m["start_hour"] >= min_hour]
+        evening_movies = [
+            m for m in all_movies if m["start_hour"] >= movie_hour]
         log.info("  Evening movies ({}:00+): {}".format(
-            min_hour, len(evening_movies)))
-
-        # Fetch Wikipedia descriptions
-        unique_titles = {}
-        for m in evening_movies:
-            key = (m["title"], m["movie_year"])
-            if key not in unique_titles:
-                unique_titles[key] = None
-
-        log.info("  Fetching descriptions for {} unique movies...".format(
-            len(unique_titles)))
-        for (title, movie_year) in unique_titles:
-            desc = fetch_movie_description(title, movie_year)
-            unique_titles[(title, movie_year)] = desc
-            if desc:
-                log.info("    {} ({}) - got description".format(
-                    title, movie_year))
-            else:
-                log.info("    {} ({}) - no description found".format(
-                    title, movie_year))
-
-        for m in evening_movies:
-            m["description"] = unique_titles.get(
-                (m["title"], m["movie_year"]), "")
+            movie_hour, len(evening_movies)))
+        log.info("  Looking up Rotten Tomatoes scores + descriptions...")
+        try:
+            from movie_info import enrich
+            today = datetime.now().strftime("%Y-%m-%d")
+            enrich([m for m in evening_movies if m["date"] >= today])
+        except Exception as e:
+            # Scores are nice-to-have; never block the movies themselves
+            log.warning("  Movie info lookup failed: {}".format(e))
 
     # --- Filter concerts to evening ---
     evening_concerts = []
     if include_concerts:
         evening_concerts = [
-            c for c in all_concerts if c["start_hour"] >= min_hour]
+            c for c in all_concerts if c["start_hour"] >= concert_hour]
         log.info("  Evening concerts ({}:00+): {}".format(
-            min_hour, len(evening_concerts)))
+            concert_hour, len(evening_concerts)))
 
     return evening_movies, evening_concerts
 
@@ -1563,13 +1420,15 @@ def load_manual_events():
         with open(MANUAL_EVENTS_FILE) as f:
             events = json.load(f)
         if not isinstance(events, list):
-            return []
+            log.error("manual_events.json is not a list")
+            return None
         log.info("Loaded {} manual event(s) from email handler".format(
             len(events)))
         return events
     except (json.JSONDecodeError, IOError) as e:
-        log.warning("Could not load manual events: {}".format(e))
-        return []
+        # None (not []) so the sync leaves existing appointments alone
+        log.error("Could not load manual events: {}".format(e))
+        return None
 
 
 def apply_manual_events(classes, manual_events):
@@ -1691,194 +1550,51 @@ def apply_manual_events(classes, manual_events):
 # Discovery mode
 # =========================================================================
 
-def run_discovery(page, url, label):
-    debug = Path("debug")
-    debug.mkdir(exist_ok=True)
-    network = []
-
-    def on_response(response):
-        entry = {
-            "url": response.url,
-            "status": response.status,
-            "content_type": response.headers.get("content-type", ""),
-        }
-        try:
-            ct = entry["content_type"]
-            if "json" in ct or "javascript" in ct:
-                entry["body_preview"] = response.text()[:5000]
-        except Exception:
-            pass
-        network.append(entry)
-
-    page.on("response", on_response)
-    log.info("[DISCOVER] Loading: {}".format(url))
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    except Exception as e:
-        log.warning("  Load: {}".format(e))
-    page.wait_for_timeout(15000)
-
-    # Save HTML
-    html = page.content()
-    (debug / "{}.html".format(label)).write_text(html)
-    log.info("  HTML: {:,} chars -> debug/{}.html".format(len(html), label))
-
-    # Save network log
-    with open(debug / "{}_network.json".format(label), "w") as f:
-        json.dump(network, f, indent=2, default=str)
-    log.info("  Network: {} requests -> debug/{}_network.json".format(
-        len(network), label))
-
-    # Log frame info
-    log.info("  Frames: {}".format(len(page.frames)))
-    for i, frame in enumerate(page.frames):
-        log.info("    [{}] {}".format(i, frame.url[:120]))
-
-    # Log widget element counts
-    for sel in ["iframe", ".bw-widget", ".bw-session", "table"]:
-        try:
-            n = len(page.query_selector_all(sel))
-            if n:
-                log.info("    '{}': {} elements".format(sel, n))
-        except Exception:
-            pass
-
-    # Screenshot
-    try:
-        page.screenshot(path=str(debug / "{}.png".format(label)))
-        log.info("  Screenshot -> debug/{}.png".format(label))
-    except Exception:
-        pass
-
-    # Extract classes from HTML
-    classes = parse_bw_widget_html(html, label)
-
-    # Also check iframes
-    for i, frame in enumerate(page.frames):
-        if frame == page.main_frame:
-            continue
-        try:
-            frame_html = frame.content()
-            frame_classes = parse_bw_widget_html(frame_html, label)
-            if frame_classes:
-                log.info("  Found {} classes in frame {}".format(
-                    len(frame_classes), i))
-                classes.extend(frame_classes)
-        except Exception:
-            pass
-
-    return classes
-
-
-# =========================================================================
-# Main
-# =========================================================================
-
 def main():
+    """Scrape every source and sync to Beth's calendar.
+
+    Each source (Tice Creek classes, Rossmoor movies/concerts) succeeds
+    or fails on its own: one broken website never blocks the others,
+    and a failed source leaves its existing calendar events untouched.
+    The process exits non-zero at the end if anything failed, so the
+    GitHub Actions run goes red and the problem is visible.
+    """
     config = load_config()
     output_dir = Path(config.get("output_dir", "docs"))
     output_dir.mkdir(parents=True, exist_ok=True)
     combined_file = output_dir / config.get(
         "combined_filename", "beth-calendar.ics")
+    failures = []
 
     log.info("=" * 60)
-    log.info("Tice Creek Fitness Center \u2013 Calendar Sync")
-    log.info("Mode: {} | Headless: {}".format(
-        "DISCOVER" if DISCOVER_MODE else "normal", HEADLESS))
+    log.info("Tice Creek Fitness Center \u2013 Class Schedule")
     log.info("=" * 60)
 
-    all_classes = []
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=HEADLESS)
-        ctx = browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/121.0.0.0 Safari/537.36"
-            ),
-        )
-
-        for label, url in SCHEDULE_PAGES.items():
-            page = ctx.new_page()
-
-            if DISCOVER_MODE:
-                classes = run_discovery(page, url, label)
-            else:
-                classes = scrape_page(page, url, label)
-
-            all_classes.extend(classes)
-            page.close()
-
-        browser.close()
-
-    log.info("")
+    from tice_schedule import fetch_all
+    all_classes, class_coverage, class_errors = fetch_all()
+    for label, err in class_errors.items():
+        failures.append("Tice Creek {}: {}".format(label, err))
     log.info("Total scraped: {}".format(len(all_classes)))
 
-    # Deduplicate by start_iso + name
-    seen = set()
-    unique = []
-    for cls in all_classes:
-        key = (cls.get("start_iso", ""), cls.get("name", ""))
-        if key not in seen:
-            seen.add(key)
-            unique.append(cls)
-    if len(unique) < len(all_classes):
-        log.info("Deduplicated: {} -> {} unique".format(
-            len(all_classes), len(unique)))
-    all_classes = unique
-
-    # Save raw data
     Path("debug").mkdir(exist_ok=True)
     with open("debug/all_classes.json", "w") as f:
         json.dump(all_classes, f, indent=2, default=str)
 
-    if DISCOVER_MODE:
-        log.info("")
-        log.info("\U0001f50d Discovery complete! Check the debug/ folder.")
-        log.info("   Files: *.html, *.png, *_network.json, all_classes.json")
-        if all_classes:
-            log.info("")
-            log.info("\u2705 Auto-extracted {} classes!".format(
-                len(all_classes)))
-            for cls in all_classes[:10]:
-                log.info("   {} {} - {} ({})".format(
-                    cls.get("date", "?"), cls.get("time", "?"),
-                    cls.get("name", "?"), cls.get("instructor", "?")))
-            if len(all_classes) > 10:
-                log.info("   ... and {} more".format(len(all_classes) - 10))
-            log.info("")
-            log.info("   Run without --discover to generate the calendar.")
-        else:
-            log.info("")
-            log.info("\u26a0\ufe0f  No classes auto-extracted.")
-            log.info("   Share the debug/ folder and I'll tune the scraper.")
-        return
+    # Filter to Beth's preferences, then Zumba wins any overlap
+    filtered = resolve_conflicts(filter_classes(all_classes, config))
 
-    if not all_classes:
-        log.error(
-            "\n\u274c No classes scraped!\n"
-            "   Run: python3 scraper.py --discover --no-headless\n"
-            "   Then share the debug/ folder so we can tune the parser.\n"
-            "   Exiting WITHOUT overwriting calendar to preserve old data."
-        )
-        sys.exit(1)
-
-    # Show what we found
-    for cls in all_classes[:15]:
-        log.info("  {} {:>8} - {} ({})".format(
-            cls.get("date", "?"), cls.get("time", "?"),
-            cls.get("name", "?"), cls.get("instructor", "?")))
-    if len(all_classes) > 15:
-        log.info("  ... and {} more".format(len(all_classes) - 15))
-
-    # Filter to Beth's preferences
-    filtered = filter_classes(all_classes, config)
-
-    # Resolve conflicts (Zumba wins over overlapping classes)
-    filtered = resolve_conflicts(filtered)
-
+    # Email-forwarded changes: cancel/modify adjust class listings, adds
+    # become their own appointment events.
+    manual = load_manual_events()
+    if manual is None:
+        appointments = None
+        failures.append("manual_events.json unreadable")
+    else:
+        filtered = apply_manual_events(
+            filtered, [m for m in manual
+                       if m.get("type") in ("cancel", "modify")])
+        appointments = [m for m in manual if m.get("type") == "add"
+                        and m.get("date") and m.get("start_time")]
     if filtered:
         log.info("")
         log.info("Beth's classes this period:")
@@ -1888,55 +1604,62 @@ def main():
                 cls.get("time", ""), cls.get("name", ""),
                 cls.get("instructor", "")))
 
-    # Scrape Rossmoor entertainment (movies + concerts)
     log.info("")
     log.info("=" * 60)
     log.info("Rossmoor \u2013 Movies & Entertainment Sync")
     log.info("=" * 60)
-    movies, concerts = scrape_entertainment(config)
+    try:
+        movies, concerts = scrape_entertainment(config)
+    except Exception:
+        log.exception("Entertainment scrape crashed")
+        movies, concerts = None, None
+    if movies is None or concerts is None:
+        failures.append("Rossmoor movies/concerts: scrape failed")
 
-    if movies:
-        log.info("")
-        log.info("Evening movies this month:")
-        for mov in movies:
-            log.info("  {} {} - {} ({})".format(
-                mov.get("date", ""),
-                datetime.fromisoformat(mov["start_iso"]).strftime(
-                    "%I:%M %p").lstrip("0"),
-                mov["title"], mov["movie_year"]))
+    for mov in movies or []:
+        log.info("  {} {} - {} ({}) {}".format(
+            mov.get("date", ""),
+            datetime.fromisoformat(mov["start_iso"]).strftime(
+                "%I:%M %p").lstrip("0"),
+            mov["title"], mov["movie_year"], mov.get("rt_score", "")))
+    for evt in concerts or []:
+        log.info("  {} {} - {} {}".format(
+            evt.get("date", ""),
+            datetime.fromisoformat(evt["start_iso"]).strftime(
+                "%I:%M %p").lstrip("0"),
+            evt["title"],
+            "({})".format(evt["cost"]) if evt.get("cost") else "(Free)"))
 
-    if concerts:
-        log.info("")
-        log.info("Evening concerts/events this month:")
-        for evt in concerts:
-            log.info("  {} {} - {} {}".format(
-                evt.get("date", ""),
-                datetime.fromisoformat(evt["start_iso"]).strftime(
-                    "%I:%M %p").lstrip("0"),
-                evt["title"],
-                "({})".format(evt["cost"]) if evt.get("cost") else "(Free)"))
-
-    # Load manual events from email handler
-    manual_events = load_manual_events()
-    if manual_events:
-        filtered = apply_manual_events(filtered, manual_events)
-
-    # Sync directly to Google Calendar (with colors!)
     if os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY"):
         from gcal_sync import sync_to_google_calendar
         log.info("")
         log.info("=" * 60)
         log.info("Syncing to Google Calendar...")
         log.info("=" * 60)
-        sync_to_google_calendar(filtered, movies, concerts, config)
+        try:
+            sync_to_google_calendar(filtered, movies, concerts, config,
+                                    class_coverage=class_coverage,
+                                    appointments=appointments)
+        except Exception as e:
+            log.exception("Google Calendar sync failed")
+            failures.append("Google Calendar sync: {}".format(e))
     else:
-        # Fallback: generate ICS file
+        # Local/dev fallback: write an ICS file instead
         combined_ics, total_count = generate_combined_ics(
-            filtered, movies, concerts, config)
+            filtered, movies or [], concerts or [], config)
         combined_file.write_text(combined_ics)
         log.info("")
         log.info("\u2705 Calendar -> {} ({:,} bytes, {} events)".format(
             combined_file, combined_file.stat().st_size, total_count))
+
+    if failures:
+        log.error("")
+        log.error("Sync finished with problems:")
+        for f in failures:
+            log.error("  \u274c {}".format(f))
+        sys.exit(1)
+    log.info("")
+    log.info("\u2705 All sources synced")
 
 
 if __name__ == "__main__":

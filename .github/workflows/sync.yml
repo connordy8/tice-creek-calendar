@@ -1,11 +1,15 @@
 name: Sync Tice Creek Schedule
 
 on:
-  # Full sync daily at 6 AM Pacific (2 PM UTC)
+  # Every 3 hours, 6 AM - 9 PM Pacific, so class availability ("sign up
+  # · 4 left", "FULL · waitlist") stays fresh. Sign-up windows open at
+  # 8 AM, so the 9 AM run flips "sign-up opens ..." to "sign up".
+  # UTC hours below are PDT; in PST everything shifts an hour earlier.
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "0 13,16,19,22,1,4 * * *"
 
-  # Allow manual trigger from GitHub UI
+  # Allow manual trigger (check-email.yml also triggers this after it
+  # records a forwarded appointment)
   workflow_dispatch:
 
   # Also run on pushes to main (for testing config changes)
@@ -15,11 +19,13 @@ on:
       - "config.yaml"
       - "scraper.py"
       - "gcal_sync.py"
-      - "email_handler.py"
+      - "tice_schedule.py"
+      - "movie_info.py"
+      - "manual_events.json"
 
-# Grant write permission to push updated ICS file
 permissions:
-  contents: write
+  contents: write   # commit movie_info.json / manual_events.json
+  actions: write    # keep-alive: re-enable scheduled workflows
 
 # Prevent overlapping with email handler (both push to same repo)
 concurrency:
@@ -38,26 +44,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # GitHub silently disables scheduled workflows after 60 days with
+      # no commits. That happened in Aug 2026 and nothing synced for
+      # two months. Re-enabling via the API resets the clock.
+      - name: Keep scheduled workflows alive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in sync.yml check-email.yml; do
+            gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf"
+          done
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
+      # No browser needed: Tice Creek and Rossmoor are both plain HTTP
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
+        run: pip install pyyaml anthropic google-auth google-api-python-client pdfplumber
 
+      # A Gmail/Anthropic hiccup must not block the calendar sync.
+      # check-email.yml handles email every 30 min anyway.
       - name: Check email for calendar updates
+        continue-on-error: true
         env:
           CALENDAR_EMAIL: bethcalendarupdate@gmail.com
           CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python email_handler.py
 
-      - name: Run scraper
+      # Each source syncs independently; this step goes red if any
+      # source failed, after syncing everything that worked.
+      - name: Scrape and sync calendar
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
@@ -71,14 +92,15 @@ jobs:
           path: debug/
           retention-days: 7
 
-      - name: Commit and push updated calendar
+      - name: Commit movie cache / email updates
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/ manual_events.json
+          git add manual_events.json movie_info.json
           if git diff --cached --quiet; then
-            echo "No changes to calendar"
+            echo "Nothing to commit"
           else
-            git commit -m "Update Tice Creek calendar [$(date -u +'%Y-%m-%d %H:%M UTC')]"
-            git push
+            git commit -m "Update calendar data [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git pull --rebase --autostash && git push
           fi
