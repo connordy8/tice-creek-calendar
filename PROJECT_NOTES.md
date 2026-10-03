@@ -104,6 +104,7 @@ Deterministic MD5 hashes so reruns update instead of creating duplicates. `gcal_
 - The widget page embeds the next 7 days (aquatics: ~4 weeks) as JSON in `self.__next_f.push(...)` chunks, under `"initialClasses"`. Repeated objects are de-duplicated into `"$2f"`-style references to other payload rows; resolve them or staff/instructor data goes missing.
 - `bookable` is the reliable "can sign up now" flag. `numberRegistered` often exceeds `capacity` (the widget then shows "Only -6 spots left!"), so only show a spot count when it's between 1 and capacity.
 - `capacity == 0` means no online sign-up: CLUB classes and Water Aerobics. These are listed as drop-in.
+- Beth's own calendar has entries for classes she books (e.g. " Aqua: Aquacise", "Forever Fit" - apparently added by the Mindbody app). `gcal_sync` reads them (never edits them) and skips listing a class when one of hers shares a name word and starts within 20 min.
 - Sign-up opens 7 days ahead at 8 AM (`bookingWindowStart`).
 
 - Fitness classes use `sLoc=0`. Aquatics classes use `sLoc=1`. **You must scan both** — missing `sLoc=1` is why Monday Aquacise was missing for a while.

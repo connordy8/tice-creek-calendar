@@ -388,6 +388,32 @@ def _category(eid, item):
     return None
 
 
+_GENERIC_WORDS = {"class", "club", "with", "and", "the", "for", "caar",
+                  "aqua", "new", "apt"}
+
+
+def _sig_words(text):
+    # 3+ letters so "Tai Chi" / "Mat Yoga" count
+    return {w for w in re.findall(r"[a-z]+", (text or "").lower())
+            if len(w) >= 3 and w not in _GENERIC_WORDS}
+
+
+def _beth_already_has(cls, others):
+    """True if Beth's own calendar (events we don't manage, e.g. ones the
+    Mindbody app adds when she books) already has this class: same
+    name word, starting within 20 minutes."""
+    start = datetime.fromisoformat(cls["start_iso"])
+    words = _sig_words(cls.get("name"))
+    for item in others:
+        other_start = _event_start(item)
+        if other_start is None:
+            continue
+        if abs((other_start - start).total_seconds()) <= 20 * 60 and (
+                words & _sig_words(item.get("summary"))):
+            return True
+    return False
+
+
 def _needs_update(old, new):
     if old.get("status") == "cancelled":
         return True
@@ -428,6 +454,30 @@ def sync_to_google_calendar(classes, movies, concerts, config,
     now = _now()
     problems = []
 
+    # --- Find existing managed events ---
+    time_min = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
+    time_max = (datetime.utcnow() + timedelta(days=90)).isoformat() + "Z"
+    existing = {}
+    others = []   # Beth's own events: read-only, used to avoid duplicates
+    page_token = None
+    while True:
+        resp = gcal_api_call(
+            service.events().list,
+            calendarId=calendar_id, timeMin=time_min, timeMax=time_max,
+            maxResults=2500, singleEvents=True, showDeleted=True,
+            pageToken=page_token)
+        for item in resp.get("items", []):
+            eid = item.get("id", "")
+            if eid.startswith(ALL_PREFIXES):
+                existing[eid] = item
+            elif (item.get("status") != "cancelled"
+                  and item.get("start", {}).get("dateTime")):
+                others.append(item)
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    log.info("  Found {} existing managed events".format(len(existing)))
+
     # --- Build desired events per category ---
     desired = {}          # eid -> body
     desired_upcoming = {}  # category -> count of future desired events
@@ -440,6 +490,12 @@ def sync_to_google_calendar(classes, movies, concerts, config,
         ("appointments", appointments, build_manual_event),
     ]
     for cat, items, build_fn in builders:
+        if cat == "classes" and items is not None:
+            mine = [c for c in items if _beth_already_has(c, others)]
+            for c in mine:
+                log.info("  Beth already has {} on {} {}; not listing it"
+                         .format(c.get("name"), c.get("date"), c.get("time")))
+            items = [c for c in items if c not in mine]
         if items is None:
             log.warning("  {}: source unavailable, leaving existing events "
                         "untouched".format(cat))
@@ -463,26 +519,6 @@ def sync_to_google_calendar(classes, movies, concerts, config,
     if classes is not None and not class_coverage:
         # No coverage info means we can't scope deletions safely
         reconcile.discard("classes")
-
-    # --- Find existing managed events ---
-    time_min = (datetime.utcnow() - timedelta(days=7)).isoformat() + "Z"
-    time_max = (datetime.utcnow() + timedelta(days=90)).isoformat() + "Z"
-    existing = {}
-    page_token = None
-    while True:
-        resp = gcal_api_call(
-            service.events().list,
-            calendarId=calendar_id, timeMin=time_min, timeMax=time_max,
-            maxResults=2500, singleEvents=True, showDeleted=True,
-            pageToken=page_token)
-        for item in resp.get("items", []):
-            eid = item.get("id", "")
-            if eid.startswith(ALL_PREFIXES):
-                existing[eid] = item
-        page_token = resp.get("nextPageToken")
-        if not page_token:
-            break
-    log.info("  Found {} existing managed events".format(len(existing)))
 
     # --- Create / update ---
     created = updated = 0
