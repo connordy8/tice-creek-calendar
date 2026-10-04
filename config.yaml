@@ -1,10 +1,12 @@
 # ============================================================
 # Tice Creek Calendar Sync – Beth's Preferences
 # ============================================================
-# List: Zumba, UJAM, Aquacise, Water Aerobics, Posture Balance,
-#       Mat Yoga, Functional Strength/Fitness, Tai Chi, ForeverFit,
-#       Let's Stretch, Strength & Stretch/Flexibility, Pilates Mat
-# Only list: classes at 11am or later (Zumba from 10am)
+# List: Zumba (her favorite, incl. Zumba Club Tue/Thu 9:45am), UJAM,
+#       Aquacise, Water Aerobics, Posture Balance, Mat Yoga,
+#       Functional Strength/Fitness, ForeverFit, Let's Stretch,
+#       Strength & Stretch/Flexibility, Pilates Mat
+# NOT: Tai Chi (removed Oct 2026), Pickleball (removed Apr 2026)
+# Only list: classes at 11am or later, except Zumba (any time)
 # Beth signs up herself; the calendar shows whether sign-up is needed
 # and how many spots are left.
 # ============================================================
@@ -22,7 +24,6 @@ include_classes:
   - "mat yoga"
   - "foreverfit"
   - "forever fit"
-  - "tai chi"
   - "functional strength"
   - "functional fitness"
   - "strength and stretch"
@@ -38,13 +39,14 @@ exclude_classes:
   - "cancelled"
   - "introduction to"    # equipment orientations, not classes
   - "pickleball"         # explicitly removed Apr 2026
+  - "tai chi"            # explicitly removed Oct 2026
 
 # Only show classes at 11am or later
 earliest_hour: 11
 
 # Per-class exceptions to earliest_hour (matched against class name)
 earliest_hour_overrides:
-  zumba: 10
+  zumba: 0     # her favorite: list every Zumba, incl. 9:45am Zumba Club
 
 # Start events 15 min early so Beth has travel time
 # (real class time still shown in the event description)

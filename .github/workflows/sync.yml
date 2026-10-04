@@ -6,7 +6,7 @@ on:
   # 8 AM, so the 9 AM run flips "sign-up opens ..." to "sign up".
   # UTC hours below are PDT; in PST everything shifts an hour earlier.
   schedule:
-    - cron: "0 13,16,19,22,1,4 * * *"
+    - cron: "17 13,16,19,22,1,4 * * *"   # :17, off GitHub's busy :00
 
   # Allow manual trigger (check-email.yml also triggers this after it
   # records a forwarded appointment)
@@ -67,7 +67,7 @@ jobs:
         run: pip install pyyaml anthropic google-auth google-api-python-client pdfplumber
 
       # A Gmail/Anthropic hiccup must not block the calendar sync.
-      # check-email.yml handles email every 30 min anyway.
+      # check-email.yml handles email every 15-30 min anyway.
       - name: Check email for calendar updates
         continue-on-error: true
         env:
@@ -102,5 +102,13 @@ jobs:
             echo "Nothing to commit"
           else
             git commit -m "Update calendar data [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git pull --rebase --autostash && git push
+          fi
+          # Backup keep-alive: GitHub's 60-day inactivity rule counts
+          # commits, so if nothing has been committed in 45 days, push an
+          # empty heartbeat commit (at most one every ~45 days).
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 45 * 86400 )) ]; then
+            git commit --allow-empty -m "Keep-alive heartbeat [$(date -u +'%Y-%m-%d')]"
             git pull --rebase --autostash && git push
           fi

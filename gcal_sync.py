@@ -172,8 +172,7 @@ def _class_display_name(cls, config):
         if (rule.get("match_name", "").lower() in name.lower()
                 and rule.get("match_instructor", "").lower() in instr):
             return rule["title"]
-    # "Aqua:  Aquacise" -> "Aquacise", "CLUB: CAAR Tai Chi" -> "CAAR Tai Chi"
-    return re.sub(r"^(aqua|club)\s*:\s*", "", name, flags=re.I).strip()
+    return cls.get("display_name") or name
 
 
 def class_status(cls, now):

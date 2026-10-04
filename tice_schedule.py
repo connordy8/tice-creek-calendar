@@ -164,6 +164,14 @@ def normalize(raw, label):
                or name.upper().startswith("CLUB"))
     if instructor.upper() == "CLUB CLASS":
         instructor = ""
+    # Friendly name: "Aqua:  Aquacise" -> "Aquacise",
+    # "CLUB: Zumba" -> "Zumba Club" (what Carol and Beth call it)
+    display = re.sub(r"^aqua\s*:\s*", "", name, flags=re.I)
+    club = re.match(r"^club(?:\s*:\s*|\s+)(.+)$", display, flags=re.I)
+    if club:
+        display = club.group(1).strip()
+        if not display.lower().endswith("club"):
+            display += " Club"
 
     def _ts(key):
         v = raw.get(key)
@@ -174,6 +182,7 @@ def normalize(raw, label):
         "source": label,
         "name": name,
         "raw_name": name,
+        "display_name": display,
         "instructor": instructor,
         "room": re.sub(r"\s+", " ", raw.get("roomName") or "").strip(),
         "description": _clean_text(raw.get("description")),

@@ -348,8 +348,9 @@ EXTRACTOR_SYSTEM = """\
 You are a calendar assistant for Beth, an active senior at Rossmoor \
 (Walnut Creek, CA). She takes fitness classes at Tice Creek Fitness Center \
 (Zumba, UJAM, Aquacise with Bob, Posture Balance Core & Strength, Mat Yoga, \
-Tai Chi, Let's Stretch, Strength and Stretch, Functional Fitness, \
-Deep Water Aerobics) and attends Rossmoor movies and concerts.
+Let's Stretch, Strength and Stretch, Functional Fitness, \
+Deep Water Aerobics; Zumba is her favorite, including Carol's Zumba Club \
+on Tuesdays and Thursdays at 9:45 AM) and attends Rossmoor movies and concerts.
 
 A separate classifier has already determined this email likely contains a \
 calendar action. Your job is to extract the PRECISE action(s).

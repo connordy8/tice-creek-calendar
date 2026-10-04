@@ -1,11 +1,15 @@
 name: Check Email Updates
 
 on:
-  # Every 30 minutes during waking hours (8am-9pm Pacific)
-  # Covers both PST (16:00-05:00 UTC) and PDT (15:00-04:00 UTC)
+  # Off the :00/:30 marks on purpose: GitHub drops/delays many runs
+  # scheduled at the top of the hour. Every 15 min in the morning so a
+  # "Zumba Club cancelled today" email lands before the 9:45 AM class
+  # (13-17 UTC = 6-10:59 AM PDT / 5-9:59 AM PST), then every 30 min
+  # until ~10 PM Pacific. Even so, GitHub's scheduler is best-effort.
   schedule:
-    - cron: "0,30 15-23 * * *"
-    - cron: "0,30 0-5 * * *"
+    - cron: "7,22,37,52 13-17 * * *"
+    - cron: "7,37 18-23 * * *"
+    - cron: "7,37 0-5 * * *"
 
   # Allow manual trigger
   workflow_dispatch:

@@ -1431,6 +1431,12 @@ def load_manual_events():
         return None
 
 
+def _names_match(target, cls):
+    """Email targets say "zumba club"; Mindbody says "CLUB: Zumba"."""
+    return any(target in (cls.get(k) or "").lower()
+               for k in ("name", "display_name"))
+
+
 def apply_manual_events(classes, manual_events):
     """Apply email-sourced changes to the scraped class list.
 
@@ -1453,7 +1459,7 @@ def apply_manual_events(classes, manual_events):
         classes = [
             c for c in classes
             if not (c.get("date") == target_date
-                    and target in c.get("name", "").lower())
+                    and _names_match(target, c))
         ]
         removed = before - len(classes)
         if removed:
@@ -1470,7 +1476,7 @@ def apply_manual_events(classes, manual_events):
 
         for cls in classes:
             if (cls.get("date") == target_date
-                    and target in cls.get("name", "").lower()):
+                    and _names_match(target, cls)):
                 if new_time:
                     # Update start time
                     new_iso = "{}T{}".format(target_date, new_time)

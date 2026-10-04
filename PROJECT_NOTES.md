@@ -27,19 +27,20 @@ Since May 2026 the system does **not** book classes. It *lists* every class Beth
 These came out of many rounds of feedback. Treat them as load-bearing — don't silently change them.
 
 ### Classes she wants
-- Zumba, UJAM
+- **Zumba — her favorite.** Every Zumba session is listed regardless of time, including the 9:45 AM Tue/Thu **Zumba Club** (Mindbody: "CLUB: Zumba", shown as "Zumba Club"; Carol Lehr's forwarded emails are about this one)
+- UJAM
 - Aquacise, Deep Water Aerobics (aquatics)
 - Posture / Balance / Core and Strength
 - Mat Yoga
 - Functional Fitness / Functional Strength
-- Tai Chi
 - ForeverFit
 - Let's Stretch
 - Strength and Stretch
 
 ### Classes she does NOT want
 - **Pickleball** (explicitly removed — Apr 2026)
-- Anything before 11 AM (she's not a morning person)
+- **Tai Chi** (explicitly removed — Oct 2026). Her own "Tai Chi- Begginers" entries are hers; leave them.
+- Anything before 11 AM (she's not a morning person), except Zumba
 - Anything cancelled
 
 ### Display tweaks she likes
@@ -75,7 +76,7 @@ Forwarded emails ── email_handler.py ─> manual_events.json ─────
 
 ### Workflows (`.github/workflows/`)
 - `sync.yml` — every 3 hours 6 AM–9 PM PT: email check + scrape + calendar sync. Also re-enables itself and `check-email.yml` (keep-alive).
-- `check-email.yml` — every 30 min: polls Gmail for forwarded events, then triggers `sync.yml` if anything changed.
+- `check-email.yml` — every 15 min 6–11 AM PT, every 30 min until ~10 PM: polls Gmail for forwarded events, then triggers `sync.yml` if anything changed. Crons are deliberately off :00/:30 (GitHub drops many top-of-hour runs); still best-effort, so treat email latency as up to an hour or two.
 - `auto-book.yml` — retired, manual-only.
 - `dump-calendar.yml` — manual: prints the next 7 days (used for "is the calendar up to date?" checks)
 - `add-event.yml` — manual: add a one-off event by form input
