@@ -9,6 +9,8 @@
 # Only list: classes at 11am or later, except Zumba (any time)
 # Beth signs up herself; the calendar shows whether sign-up is needed
 # and how many spots are left.
+# Exception: Zumba is auto-booked the day before (or when down to 2
+# spots), one per day. Rules live in zumba_autobook.py.
 # ============================================================
 
 calendar_name: "Tice Creek – Beth's Classes"

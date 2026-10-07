@@ -1,0 +1,99 @@
+name: Zumba Auto-Book
+
+# Sign Beth up for Zumba the day before, or sooner when a class is down
+# to its last couple of spots (at most one a day; the latest when
+# several qualify). See the zumba_autobook.py docstring. The check
+# is plain HTTP and takes seconds; Playwright is only installed when there's a class to book.
+
+on:
+  # Every 10 min, 6 AM - 10 PM PDT (5 AM - 9 PM PST). Off the :00
+  # marks, which GitHub's scheduler drops most often.
+  # schedule:   # enabled after a successful dry run
+  #   - cron: "4,14,24,34,44,54 13-23,0-5 * * *"
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Sign in and walk the flow without booking (emails screenshots to Connor)'
+        type: boolean
+        default: true
+      class_id:
+        description: 'Dry run against this Mindbody class id (e.g. cinst_...) even if it has more than one spot'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # commit autobook_state.json
+  actions: write    # trigger sync.yml after a booking
+
+concurrency:
+  group: zumba-autobook
+  cancel-in-progress: false
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  autobook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install pyyaml google-auth google-api-python-client
+
+      - name: Look for Zumba classes that are due
+        id: check
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+        run: python zumba_autobook.py --check
+
+      - name: Install browser
+        if: steps.check.outputs.targets || inputs.class_id || inputs.dry_run
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Book
+        if: steps.check.outputs.targets || inputs.class_id || inputs.dry_run
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+          CLASS_ID: ${{ inputs.class_id }}
+        run: python zumba_autobook.py $DRY_RUN ${CLASS_ID:+--class-id "$CLASS_ID"}
+
+      # Screenshots of Beth's account are emailed to Connor, never
+      # uploaded: artifacts on a public repo are visible to anyone.
+      - name: Commit booking state and refresh the calendar
+        if: always() && steps.check.outputs.targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add autobook_state.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No booking state changes"
+            exit 0
+          fi
+          git commit -m "Zumba auto-book [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && break
+            sleep 5
+          done
+          gh workflow run sync.yml --repo "$GITHUB_REPOSITORY" || echo "couldn't trigger sync"

@@ -47,7 +47,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for wf in sync.yml check-email.yml; do
+          for wf in sync.yml check-email.yml zumba-autobook.yml; do
             gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf"
           done
 
