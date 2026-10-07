@@ -293,11 +293,16 @@ def _sign_in(popup, email, password, shots):
             raise BookingError(
                 "Mindbody asked for a verification code at sign-in. "
                 "Automated booking can't get past that.")
-        if re.search(r"incorrect|invalid|try again|doesn'?t match", text,
-                     re.I):
+        bad = re.search(r"incorrect|invalid|try again|doesn'?t match", text,
+                        re.I)
+        if bad:
             _snap(popup, "sign-in-rejected", shots)
+            # Safe for the public log: Mindbody's message, emails masked
+            said = re.sub(r"\S+@\S+", "<email>", text[
+                max(0, bad.start() - 80):bad.end() + 80]).replace("\n", " ")
             raise BookingError("Mindbody rejected the sign-in "
-                               "(MINDBODY_EMAIL / MINDBODY_PASSWORD).")
+                               "(MINDBODY_EMAIL / MINDBODY_PASSWORD): "
+                               "'{}'".format(said.strip()))
     _snap(popup, "sign-in-stuck", shots)
     raise BookingError("Sign-in popup didn't finish within 30s")
 
