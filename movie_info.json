@@ -6,6 +6,12 @@
   "title": "9 to 5",
   "year": "1980"
  },
+ "ace ventura|1995": {
+  "rt_score": "48%",
+  "rt_url": "https://www.rottentomatoes.com/m/ace_ventura_pet_detective",
+  "title": "Ace Ventura",
+  "year": "1995"
+ },
  "coat of many colors|2015": {
   "description": "In the Smoky Mountains of Tennessee in 1955, a young Dolly Parton grows up in a large, poor family. Her mother sews her a patchwork coat from rags, and Dolly wears it proudly even when classmates tease her. Meanwhile a family tragedy tests her parents' marriage and their faith.",
   "locked": true,
@@ -13,12 +19,26 @@
   "title": "Coat Of Many Colors",
   "year": "2015"
  },
+ "coyote vs acme|2026": {
+  "description": "Coyote vs. Acme is a 2026 American comedy film directed by Dave Green and written by Samy Burch, who developed the story with James Gunn and Jeremy Slater. Loosely based on the 1990 The New Yorker magazine article \"Coyote v.",
+  "rt_score": "96%",
+  "rt_url": "https://www.rottentomatoes.com/m/coyote_vs_acme",
+  "title": "Coyote vs. Acme",
+  "year": "2026"
+ },
  "delicious|2021": {
   "description": "In France in 1789, just before the Revolution, the gifted cook Manceron is dismissed by his aristocratic employer for serving an unapproved dish and withdraws to a run-down roadside inn. A mysterious woman arrives asking to learn from him, and with her help he rediscovers his love of cooking. Together they open an eatery for ordinary people, presented as the birth of the public restaurant. (French, with subtitles.)",
   "locked": true,
   "rt_score": "100%",
   "title": "Delicious",
   "year": "2021"
+ },
+ "dirty rotten scoundrels|1988": {
+  "description": "Dirty Rotten Scoundrels is a 1988 American comedy film directed by Frank Oz and produced by Bernard Williams. It is a remake of the 1964 film Bedtime Story, whose co-writers Stanley Shapiro and Paul Henning received screen credit for Dirty Rotten Scoundrels, along with writer Dale Launer. Set on the French Riviera, the film stars Steve Martin and Michael Caine as two con men competing to swindle a wealthy tourist out of $50,000.",
+  "rt_score": "89%",
+  "rt_url": "https://www.rottentomatoes.com/m/dirty_rotten_scoundrels",
+  "title": "Dirty Rotten Scoundrels",
+  "year": "1988"
  },
  "famous last words gloria steinem|2026": {
   "description": "An episode of Netflix's Famous Last Words series: a 46-minute interview Gloria Steinem recorded in February 2025, held for release until after her death. She talks openly about founding Ms. magazine, her loves and family, conflicts inside the feminist movement and her regrets, and ends with a message to the next generation.",
@@ -32,6 +52,28 @@
   "rt_score": "79%",
   "title": "Good Fortune",
   "year": "2025"
+ },
+ "made of honor|2008": {
+  "rt_score": "15%",
+  "rt_url": "https://www.rottentomatoes.com/m/made_of_honor",
+  "title": "Made Of Honor",
+  "year": "2008"
+ },
+ "no pressure|2024": {
+  "description": "No Pressure is a 2024 Polish romantic comedy film directed by Bartosz Prokopowicz that was released on Netflix on 27 March 2024.",
+  "title": "No Pressure",
+  "year": "2024"
+ },
+ "now you see me 3|2025": {
+  "description": "Now You See Me: Now You Don't is a 2025 American heist film directed by Ruben Fleischer from a screenplay by Michael Lesslie, the writing duo of Paul Wernick and Rhett Reese, and Seth Grahame-Smith, based on a story by Eric Warren Singer and Lesslie. The film is the sequel to Now You See Me 2 (2016) and the third installment in the Now You See Me film series. The cast includes Jesse Eisenberg, Woody Harrelson, Dave Franco, Isla Fisher, Lizzy Caplan, and Morgan Freeman returning from previous ...",
+  "title": "Now You See Me 3",
+  "year": "2025"
+ },
+ "on the waterfront|1954": {
+  "rt_score": "99%",
+  "rt_url": "https://www.rottentomatoes.com/m/on_the_waterfront",
+  "title": "On The Waterfront",
+  "year": "1954"
  },
  "people will talk|1951": {
   "description": "Dr. Noah Praetorius (Cary Grant) is a beloved, unconventional physician and medical school lecturer who believes in treating the whole patient. A resentful colleague digs into his mysterious past to get him dismissed, while Praetorius falls for and marries a young student who is pregnant and unmarried. A witty Joseph L. Mankiewicz comedy-drama that takes aim at small-minded gossip.",
@@ -61,6 +103,13 @@
   "title": "Steel Magnolias",
   "year": "1989"
  },
+ "the invite|2026": {
+  "description": "The Invite is a 2026 American sex comedy drama film directed by Olivia Wilde from a screenplay by Will McCormack and Rashida Jones. It is an English-language remake of the 2020 Spanish film The People Upstairs (Sentimental) by Cesc Gay. The film stars Seth Rogen, Wilde, Penélope Cruz, and Edward Norton.",
+  "rt_score": "96%",
+  "rt_url": "https://www.rottentomatoes.com/m/the_invite",
+  "title": "The Invite",
+  "year": "2026"
+ },
  "the last sunrise|2026": {
   "description": "Ry, a college student with a chronic illness, spends a summer in Mallorca with her mother and unexpectedly falls for a local young man, Julián. As she learns to live in the moment, her health gets worse and buried family secrets come to light. Directed by Carlson Young from Anna Todd's novel, starring Maia Reficco and Eva Longoria.",
   "locked": true,
@@ -68,12 +117,26 @@
   "title": "The Last Sunrise",
   "year": "2026"
  },
+ "the maltese falcon|1941": {
+  "description": "The Maltese Falcon is a 1941 American film noir written and directed by John Huston, marking Huston's directorial debut. It is the third film adaptation of Dashiell Hammett's 1930 novel, following the 1931 version directed by Roy Del Ruth, and the 1936 William Dieterle–directed Satan Met a Lady.",
+  "rt_score": "99%",
+  "rt_url": "https://www.rottentomatoes.com/m/1013139-maltese_falcon",
+  "title": "The Maltese Falcon",
+  "year": "1941"
+ },
  "the philadelphia story|1940": {
   "description": "Wealthy socialite Tracy Lord (Katharine Hepburn) is about to marry for the second time. Then her charming ex-husband (Cary Grant) arrives along with a tabloid reporter (James Stewart) and a photographer. Over one chaotic, champagne-soaked night before the wedding, Tracy has to rethink who she really is and whom she wants to marry.",
   "locked": true,
   "rt_score": "100%",
   "title": "The Philadelphia Story",
   "year": "1940"
+ },
+ "the prom|2020": {
+  "description": "The Prom is a 2020 American musical comedy film directed by Ryan Murphy from a screenplay by Chad Beguelin and Bob Martin, based on the 2018 Broadway musical of the same name by Martin, Beguelin, and Matthew Sklar. The film stars Meryl Streep, James Corden, Nicole Kidman, Keegan-Michael Key, Andrew Rannells, Ariana DeBose, Tracey Ullman, Kevin Chamberlin, Mary Kay Place, Kerry Washington, and introducing Jo Ellen Pellman in her film debut as Emma Nolan, with Logan Riley Hassel, Sofia Deler, N...",
+  "rt_score": "54%",
+  "rt_url": "https://www.rottentomatoes.com/m/the_prom_2020",
+  "title": "The Prom",
+  "year": "2020"
  },
  "the whisper man|2026": {
   "description": "When his young son is abducted, a grieving crime novelist reluctantly asks for help from his estranged father, a retired police detective. Their search points to a decades-old unsolved case involving a child killer known as 'The Whisper Man.' Adapted from Alex North's bestselling thriller novel.",
@@ -88,6 +151,18 @@
   "rt_score": "92%",
   "title": "Toy Story 5",
   "year": "2026"
+ },
+ "two jakes|1990": {
+  "description": "The Two Jakes is a 1990 American neo-noir mystery film and the sequel to the 1974 film Chinatown. Directed by and starring Jack Nicholson, who reprises his role of J.J. “Jake” Gittes from the first film, the cast also features Harvey Keitel, Meg Tilly, Madeleine Stowe, Richard Farnsworth, Frederic Forrest, David Keith, Rubén Blades, Tracey Walter and Eli Wallach.",
+  "title": "Two Jakes",
+  "year": "1990"
+ },
+ "what s your number|2011": {
+  "description": "What's Your Number? is a 2011 American romantic comedy film directed by Mark Mylod, starring Anna Faris and Chris Evans. Written by Gabrielle Allan and Jennifer Crittenden, the film is based on Karyn Bosnak's book 20 Times a Lady.",
+  "rt_score": "23%",
+  "rt_url": "https://www.rottentomatoes.com/m/whats_your_number",
+  "title": "What's Your Number?",
+  "year": "2011"
  },
  "yacht rock a documentary|2024": {
   "description": "This HBO documentary traces the smooth West Coast soft rock of the late 1970s and early 1980s, from artists like Michael McDonald, Kenny Loggins, Christopher Cross, Steely Dan and Toto. It follows the genre from chart success, to backlash, to its comeback as the beloved 'yacht rock' label that took off after a 2005 web parody series.",
