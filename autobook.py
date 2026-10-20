@@ -2,9 +2,9 @@
 
 Connor's rules (Oct 2026), configured under `autobook` in config.yaml:
 
-  * Classes, in priority order: Zumba, UJAM, Aquacise (Bob Huff's
-    only; she doesn't like the other instructors), Posture/Balance/
-    Core and Strength, Mat Yoga.
+  * Classes, in priority order (Connor's ranking for conflicts): Zumba,
+    Aquacise (Bob Huff's only; she doesn't like the other instructors),
+    UJAM, Posture/Balance/Core and Strength, Mat Yoga.
   * Book a class only the day before, or sooner once it's down to its
     last couple of spots. The Tice Creek staff don't like people
     signing up for lots of future classes.
@@ -115,6 +115,9 @@ WATCH_SLOW_SECONDS = 600  # before the rush, check every 10 min
 WATCH_FAST_SECONDS = 20
 # Alert if no 8 AM watch has run for this many days
 WATCH_MISSED_DAYS = 3
+# Alert if the calendar sync workflow hasn't run for this long (it
+# checks this workflow the same way)
+PEER_STALE_HOURS = 24
 
 # --- Mindbody's own wording (from the widget's text catalog, Oct 2026) ---
 # Sign Up never books by itself: it opens a cart page (/book/cartv2/...)
@@ -1569,6 +1572,39 @@ def check_watch_health(state, now):
                  every_hours=24 * 7)
 
 
+def check_sync_alive(state, now):
+    """Email Connor (daily at most) if the calendar sync workflow has
+    stopped running. CI only; skipped if someone turned it off."""
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not repo or \
+            not os.environ.get("GH_TOKEN"):
+        return True
+    import subprocess
+    gh = lambda *a: subprocess.run(["gh"] + list(a), check=True, timeout=30,
+                                   capture_output=True, text=True).stdout
+    try:
+        if gh("api", "repos/{}/actions/workflows/sync.yml".format(repo),
+              "--jq", ".state").strip() != "active":
+            return True
+        last = gh("run", "list", "--repo", repo, "--workflow", "sync.yml",
+                  "-L", "1", "--json", "createdAt", "--jq",
+                  '.[0].createdAt // ""').strip()
+    except Exception as e:
+        log.warning("Couldn't check the sync workflow (%s)", type(e).__name__)
+        return True
+    if not last:
+        return True
+    last = datetime.fromisoformat(last.replace("Z", "+00:00")).astimezone(
+        PACIFIC).replace(tzinfo=None)
+    if now - last < timedelta(hours=PEER_STALE_HOURS):
+        return True
+    return alert(state, "stale:sync", "Calendar sync has stopped running",
+                 "The 'Sync Tice Creek Schedule' workflow hasn't run since "
+                 "{}, so Beth's calendar isn't being updated (classes, "
+                 "movies, forwarded appointments). Check the Actions tab.\n"
+                 .format(last.strftime("%a %b %-d %-I:%M %p")))
+
+
 def watch(args, state, rules):
     """Keep checking until 8:40 AM: every 10 min, then every 20 s from
     7:40. Returns False if an alert couldn't be delivered."""
@@ -1657,6 +1693,7 @@ def main():
         else:
             ok = run_once(args, state, rules)
             ok &= check_watch_health(state, _now())
+            ok &= check_sync_alive(state, _now())
         save_state(state)
     except Exception as e:
         ok = _crash_alert(state, e, "crashed")

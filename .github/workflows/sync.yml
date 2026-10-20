@@ -67,6 +67,27 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      # Email Connor if the auto-booker has stopped running (it checks
+      # this workflow the same way). At most once a day: only the first
+      # sync run of the (UTC) day can send it. Skipped while its
+      # schedule is off or someone has disabled it.
+      - name: Check the auto-booker is running
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+        run: |
+          grep -qE '^ +- cron:' .github/workflows/autobook.yml || exit 0
+          state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/autobook.yml" --jq .state) || exit 0
+          [ "$state" = active ] || exit 0
+          last=$(gh run list --workflow autobook.yml -L 1 --json createdAt --jq '.[0].createdAt // ""') || exit 0
+          [ -n "$last" ] || exit 0
+          [ $(( $(date +%s) - $(date -d "$last" +%s) )) -gt $(( 24 * 3600 )) ] || exit 0
+          runs_today=$(gh run list --workflow sync.yml --created ">=$(date -u +%F)" -L 50 --json databaseId --jq length) || exit 0
+          [ "$runs_today" -le 1 ] || exit 0
+          python notify.py --alert "Auto-Book Beth's Classes" \
+            "The auto-booker hasn't run since $last UTC, so none of Beth's classes are being booked. Check the Actions tab for 'Auto-Book Beth's Classes'."
+
       # No browser needed: Tice Creek and Rossmoor are both plain HTTP
       - name: Install dependencies
         run: pip install pyyaml anthropic google-auth google-api-python-client pdfplumber

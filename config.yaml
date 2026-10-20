@@ -66,9 +66,9 @@ autobook:
   # and exclude_classes are never booked.
   classes:
     - name: "zumba"
-    - name: "ujam"
     - name: "aquacise"
       instructor: "bob huff" # only Bob's; she doesn't like the others
+    - name: "ujam"
     - name: "posture"        # Posture, Balance, Core and Strength
     - name: "mat yoga"
   earliest_hour: 11          # never book a class starting before 11 AM

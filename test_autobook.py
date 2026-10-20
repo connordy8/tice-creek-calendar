@@ -27,9 +27,9 @@ autobook:
   enabled: true
   classes:
     - name: zumba
-    - name: ujam
     - name: aquacise
       instructor: bob huff
+    - name: ujam
     - name: posture
     - name: mat yoga
   earliest_hour: 11
@@ -119,8 +119,8 @@ def test_bad_config_is_rejected():
 
 def test_fixture_matches_connors_rules():
     names = [r["name"] for r in RULES["classes"]]
-    assert names == ["zumba", "ujam", "aquacise", "posture", "mat yoga"]
-    assert RULES["classes"][2]["instructor"] == "bob huff"
+    assert names == ["zumba", "aquacise", "ujam", "posture", "mat yoga"]
+    assert RULES["classes"][1]["instructor"] == "bob huff"
     assert RULES["earliest_hour"] == 11
     assert RULES["book_days_ahead"] == 1
     assert RULES["max_spots_left"] == 2
