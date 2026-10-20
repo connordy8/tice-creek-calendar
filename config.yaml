@@ -9,8 +9,7 @@
 # Only list: classes at 11am or later, except Zumba (any time)
 # Beth signs up herself; the calendar shows whether sign-up is needed
 # and how many spots are left.
-# Exception: Zumba is auto-booked the day before (or when down to 2
-# spots), one per day. Rules live in zumba_autobook.py.
+# Exception: some classes are auto-booked; see `autobook` below.
 # ============================================================
 
 calendar_name: "Tice Creek – Beth's Classes"
@@ -53,6 +52,34 @@ earliest_hour_overrides:
 # Start events 15 min early so Beth has travel time
 # (real class time still shown in the event description)
 early_start_minutes: 15
+
+# --- Auto-booking (autobook.py, workflow autobook.yml) ---
+# The calendar bot signs Beth up for these classes. Connor's rules,
+# Oct 2026: don't hoard spots (Tice Creek staff don't like people
+# signing up for lots of future classes), so book only the day before,
+# or sooner once a class is down to its last couple of spots.
+autobook:
+  enabled: true              # false = stop all auto-booking (the off switch)
+  # Priority order: when more qualify on a day than max_per_day allows,
+  # earlier entries win. Matched against the Mindbody class name (and
+  # instructor, whole word) case-insensitively. Club/drop-in classes
+  # and exclude_classes are never booked.
+  classes:
+    - name: "zumba"
+    - name: "ujam"
+    - name: "aquacise"
+      instructor: "bob huff" # only Bob's; she doesn't like the others
+    - name: "posture"        # Posture, Balance, Core and Strength
+    - name: "mat yoga"
+  earliest_hour: 11          # never book a class starting before 11 AM
+  book_days_ahead: 1         # book the day before...
+  max_spots_left: 2          # ...or sooner once down to this many spots
+  max_per_day: 2             # at most 2 classes a day (hers count too);
+                             # at most 1 of each class (the latest)
+  buffer_minutes: 15         # gap needed between classes/appointments
+  min_lead_minutes: 120      # never book a class starting sooner
+  signin_reset: 0            # after a sign-in pause (wrong password etc.),
+                             # change to any new number to try again
 
 # Custom display names (matched by class name + instructor)
 # Format: { match_name: "...", match_instructor: "...", title: "..." }

@@ -14,7 +14,7 @@ An automated calendar system for Beth (Connor's mom) at Rossmoor 55+ community i
 2. **Rossmoor Peacock Hall** — movies and concerts scraped from myrossmoor.com/events-calendar
 3. **Email-based manual events** — Connor forwards emails (e.g. appointments) and Claude parses them into calendar entries
 
-Since May 2026 the system mostly does **not** book classes. It *lists* every class Beth likes, with sign-up status in the title ("sign up · 4 left", "FULL · waitlist", "drop-in", "sign-up opens Mon"), and Beth signs up herself. **Exception (Oct 2026): Zumba is auto-booked** by `zumba_autobook.py`, see "Zumba auto-booking" below. Movies show the Rotten Tomatoes score in the title and a plot summary in the description.
+Since May 2026 the system mostly does **not** book classes. It *lists* every class Beth likes, with sign-up status in the title ("sign up · 4 left", "FULL · waitlist", "drop-in", "sign-up opens Mon"), and Beth signs up herself. **Exception (Oct 2026): her favorite classes are auto-booked** by `autobook.py`, see "Class auto-booking" below. Movies show the Rotten Tomatoes score in the title and a plot summary in the description.
 
 - **Local path:** `/Users/connordy/tice-creek-calendar`
 - **GitHub:** `https://github.com/connordy8/tice-creek-calendar`
@@ -71,15 +71,14 @@ Forwarded emails ── email_handler.py ─> manual_events.json ─────
 | `gcal_sync.py` | Reconciles the calendar. Read its docstring: the safety rules live there. |
 | `email_handler.py` | IMAPs `bethcalendarupdate@gmail.com`. Two-stage Claude pipeline: classifier → extractor. Confidence-gated. Writes `manual_events.json`. |
 | `config.yaml` | Target class list, filters, display preferences. Single source of truth for Beth's prefs. |
-| `zumba_autobook.py` | Books Zumba for Beth (rules below). Plain-HTTP check every 10 min; Playwright only when something's due. State in `autobook_state.json`. |
+| `autobook.py` | Books Beth's favorite classes (rules below). Plain-HTTP check every 10 min; Playwright only when something's due. State in `autobook_state.json`. Tests: `python test_autobook.py`. |
 | `auto_book.py` | RETIRED (manual-only). Old Playwright booker; its login broke in May 2026. |
 | `canary.py`, `weekly_audit.py` | Manual-only monitors. Still use the old Playwright scraper, so currently broken. |
 
 ### Workflows (`.github/workflows/`)
 - `sync.yml` — every 3 hours 6 AM–9 PM PT: email check + scrape + calendar sync. Also re-enables itself and `check-email.yml` (keep-alive).
 - `check-email.yml` — every 15 min 6–11 AM PT, every 30 min until ~10 PM: polls Gmail for forwarded events, then triggers `sync.yml` if anything changed. Crons are deliberately off :00/:30 (GitHub drops many top-of-hour runs); still best-effort, so treat email latency as up to an hour or two.
-- `zumba-autobook.yml` — every 10 min 6 AM–10 PM PT: Zumba auto-booking. Manual run defaults to a dry run (`class_id` input to rehearse on any class).
-- `auto-book.yml` — retired, manual-only.
+- `autobook.yml` — "Auto-Book Beth's Classes": every 10 min 6 AM–10 PM PT plus early-morning starts that watch the 8 AM sign-up opening (see "Class auto-booking"). Manual run: mode `dry-run` (default, stops before Confirm booking) or `book`. Runs the rule tests first. (The old `auto-book.yml` was deleted Oct 2026.)
 - `dump-calendar.yml` — manual: prints the next 7 days (used for "is the calendar up to date?" checks)
 - `add-event.yml` — manual: add a one-off event by form input
 - `remove-events.yml` — manual: delete events matching a keyword (used to purge pickleball)
@@ -169,19 +168,31 @@ The system used to "succeed" green even while quietly dropping classes from Beth
 
 ---
 
-## Zumba auto-booking (Oct 2026)
+## Class auto-booking (Oct 2026)
 
-Connor's rules:
-- Book Zumba only when it's **the day before**, or when the class is down to **2 or fewer spots**. Don't hoard spots days ahead: the Tice Creek staff don't like people signing up for lots of future classes.
-- **At most one Zumba per day.** When several qualify, take the **latest**. Days where Beth already has a Zumba (her own calendar, or one we booked or tried to book) are skipped.
-- Zumba Club (drop-in, capacity 0) is never booked.
-- Never pay: a screen showing a price above $0 or a card form aborts the booking.
+Connor's rules (config: `autobook` in `config.yaml`; code: `autobook.py`; tests: `test_autobook.py`):
+- Classes, in priority order: **Zumba, UJAM, Aquacise (Bob Huff only — she doesn't like the other instructors), Posture/Balance/Core and Strength, Mat Yoga.**
+- Book only **the day before**, or sooner once a class is down to **2 or fewer spots**. Don't hoard spots days ahead: the Tice Creek staff don't like people signing up for lots of future classes.
+- **Nothing that starts before 11 AM** (Zumba included; the earlier Zumbas are still *listed*).
+- **At most one of each class a day** (the latest session when several qualify) and **at most 2 classes a day** in total (Connor's choice). Every class she has that day counts toward the 2, including ones she booked herself of any kind (recognised by name, or by lining up with a Tice Creek class on the schedule). When more qualify than fit, the list order decides. Never two that overlap (15 min buffer), never over anything on her calendar: her own timed events, forwarded appointments, multi-day trips, and all-day events marked busy (all-day events marked free, like birthdays, don't count).
+- Never a class starting within 2 hours (she needs time to notice it). Never pay, never join a waitlist, never cancel anything. Club/drop-in classes are never booked.
+- **Off switch:** `autobook: enabled: false` in config.yaml, or disable "Auto-Book Beth's Classes" in the Actions tab (the keep-alive steps only re-enable workflows that are `active` or `disabled_inactivity`). A morning watch already running re-reads both every ~2 min and stops. To stop *instantly*, also cancel the in-progress run in the Actions tab.
 
-How it works: check (`--check`) is plain HTTP + Google Calendar. When something's due, Playwright opens the branded-web widget, clicks Sign Up, signs in through the `signin.mindbodyonline.com` popup (email → Continue → password) with `MINDBODY_EMAIL`/`MINDBODY_PASSWORD`, then presses Book/Confirm-type buttons until Mindbody says she's booked, and verifies the row afterwards. Each class day gets **one attempt**: a failure is recorded in `autobook_state.json` and emailed to Connor with screenshots, and that day isn't retried (a "failed" attempt that secretly worked must not double-book her). Booked classes show "✅ booked" on the calendar listing.
+How Mindbody's booking works (read from the widget's own JS/i18n, Oct 2026): Sign Up on a schedule row (the gym's configurable `bookButtonText`, read from the page) opens a sign-in popup if needed (`signin.mindbodyonline.com`: email → Continue → password; the widget then carries on by itself), then a **cart page** (`/book/cartv2/...`). Only the cart's **"Confirm booking"** button books; success is **"You're booked!"**. Sign Up can instead show "You are already booked for this class." or "This can no longer be booked…" / "already on the waitlist" on the schedule. **Schedule rows never show a booked state**, so don't verify by re-reading the row. The bot presses Confirm booking only for a free booking, only when the button is enabled and the verdict is the same on two reads plus a re-check right before the click: any price above $0 (the cancellation-policy fee sentence is ignored), a card form, a liability waiver, a pass/pricing option to choose, pay-later wording, a family-account "who are you booking for?" step, a membership/prerequisite message, or a purchase/waitlist/request button stops it. An unknown row-button label also stops it (and emails), so a widget change can't silently stop booking.
 
-The repo is public, so screenshots/page text from Beth's signed-in pages are **emailed**, never logged or uploaded as artifacts.
+Scheduling: GitHub's scheduler drops most runs here (≈11% of check-email's slots ran in Oct 2026, almost none 6:30–9:15 AM PT). So any scheduled run that starts between **3:00 and 8:40 AM PT keeps watching until 8:40** (every 10 min, then every 20 s from 7:40 for the 8 AM sign-up opening); extra early cron triggers make that likely. If no watch has run for 3 days, Connor gets an email (weekly at most). Popular classes (UJAM, Mat Yoga, Posture) fill within minutes of 8 AM, so they're only caught when a watch is running.
 
-Known risk: if Mindbody starts demanding an email verification code at sign-in, booking can't proceed; it alerts Connor.
+Fail-safe rules:
+- Nothing can be booked before "Confirm booking" is pressed, so failures before it are retried (3×, 15 min apart; passing Mindbody errors included); a cart that wants something the bot won't do (payment, waiver…) is `blocked` and not retried for that class. Once Confirm booking was pressed, a missing "You're booked!" is recorded `failed`: never retried, and it counts toward the day's limits (it may have gone through). "Can no longer be booked" / "already on the waitlist" are recorded `maybe-booked` (she may hold it: counts toward the limits, never retried, Connor is emailed). A class that filled up is retried hourly (4×). Only `booked` (Mindbody said "You're booked!" to the bot) gets the ✅ on her calendar.
+- Problems email Connor **at most once a day per problem** (screenshots attached). The workflow only goes red when that email couldn't be sent.
+- **Wrong password → sign-in pauses until the `MINDBODY_PASSWORD` secret changes** (repeated bad logins could lock Beth's account). The state file stores an HMAC fingerprint of the credentials keyed by the service-account key, never the password. A verification-code prompt pauses 24 h, a lockout/"too many attempts" 24 h, any other sign-in surprise 6 h; each repeat pauses 3× longer and the third stays paused. **To retry without changing the password, change `autobook: signin_reset` in config.yaml to any new number.**
+- `test_autobook.py` tests the logic against a fixed copy of the rules, so editing config.yaml never stops booking; `test_autobook.py --config` (run on pushes, non-blocking) flags when config.yaml no longer matches Connor's rules. A malformed `autobook` section stops booking with an email.
+- Between 3:00 and 8:40 AM a manual run waits for the morning watch and may be replaced by a scheduled one (GitHub keeps one pending run): cancel the watch first.
+- State (`autobook_state.json`) is pushed by `autobook_push_state.sh`, right after a booking during the watch and at the end of every run. Runs check out the tip of `main`; a push race is resolved by merging the two state files (`autobook.py --merge-state`).
+- The repo is public: logs show signed-in pages only as Mindbody's own UI words (`autobook_ui_words.txt`, from its i18n catalog) plus class/instructor names; anything else (Beth's name) becomes "•". Screenshots go by email, never to artifacts. The state file's `error` field holds only our own short messages.
+- Dry runs (`workflow_dispatch` mode `dry-run`, optional `class_id`) stop on the cart before Confirm booking, so they can't book; a `class_id` must pass every rule except "due".
+
+Known risks: Mindbody changing its widget, cart or sign-in pages (the bot stops and emails), Mindbody requiring emailed sign-in codes (sign-in pauses; Beth may need to sign in once herself), and GitHub's scheduler skipping the morning watch.
 
 ## Email handler — bulletproof logic
 

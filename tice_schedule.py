@@ -72,8 +72,15 @@ def _get(url, timeout=30, retries=3):
     raise ScheduleError("GET {} failed: {}".format(url, last))
 
 
+_resolved = {}  # label -> widget id, for the life of the process
+
+
 def resolve_widget_id(label):
-    """Find the current branded-web widget ID for a Tice Creek page."""
+    """Find the current branded-web widget ID for a Tice Creek page.
+    Cached per process: autobook's morning watch checks every 20s and
+    shouldn't hit ticefitnesscenter.com each time."""
+    if label in _resolved:
+        return _resolved[label]
     try:
         page = _get(SCHEDULE_PAGES[label])
         hc = re.search(r'<healcode-widget[^>]*data-widget-id="([^"]+)"', page)
@@ -82,10 +89,12 @@ def resolve_widget_id(label):
             m = re.search(r'data-widget-id="([^"]+)"',
                           mapping.get("contents", ""))
             if m:
+                _resolved[label] = m.group(1)
                 return m.group(1)
         # Page might embed the branded widget directly some day
         m = re.search(r'schedules/view/([0-9a-z]+)/schedule', page)
         if m:
+            _resolved[label] = m.group(1)
             return m.group(1)
         log.warning("  Couldn't discover widget id for %s; using fallback",
                     label)

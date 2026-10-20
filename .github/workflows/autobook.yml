@@ -1,0 +1,200 @@
+name: Auto-Book Beth's Classes
+
+# Signs Beth up for her favorite classes: the day before, or sooner when
+# a class is down to its last couple of spots. Rules: the autobook.py
+# docstring and the `autobook` section of config.yaml (set
+# `enabled: false` there to stop all auto-booking).
+#
+# Cost: $0. Public repos get unlimited standard GitHub-hosted runner
+# minutes, and nothing here calls a paid API.
+#
+# GitHub's scheduler is best-effort and drops most runs in this repo,
+# especially around 6:30-9:15 AM Pacific. So any scheduled run that
+# starts between 3:00 and 8:40 AM Pacific stays up and keeps watching
+# until 8:40 (every 20s from 7:40), because sign-ups open at 8 AM and
+# the popular classes fill within minutes. Runs that queue behind it
+# just do a normal check afterwards.
+
+on:
+  # SCHEDULE OFF until MINDBODY_PASSWORD is updated and a dry run passes
+  # (uncomment both lines below to turn auto-booking on).
+  # schedule:
+    # Every 10 min, ~6 AM - 10 PM Pacific (UTC hours; PST shifts an
+    # hour earlier). Off the :00 marks, which GitHub drops most often.
+    # - cron: "4,14,24,34,44,54 13-23,0-5 * * *"
+    # Early-morning starts for the 8 AM watch (3-5 AM PDT / 2-4 AM PST)
+    # - cron: "9,29,49 10-12 * * *"
+
+  # Code/config changes: run the rule tests and a check (never books)
+  push:
+    branches: [main]
+    paths:
+      - "autobook.py"
+      - "autobook_push_state.sh"
+      - "autobook_ui_words.txt"
+      - "test_autobook.py"
+      - "config.yaml"
+      - "tice_schedule.py"
+      - "gcal_sync.py"
+      - "requirements-autobook.txt"
+      - ".github/workflows/autobook.yml"
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run: go as far as Mindbody's 'Confirm booking' without pressing it (emails screenshots). book: book what's due now. (Between 3:00 and 8:40 AM a manual run waits for the morning watch and may be replaced by a scheduled one.)"
+        type: choice
+        options: [dry-run, book]
+        default: dry-run
+      class_id:
+        description: "Dry run on this Mindbody class id (cinst_...) instead of the first due class"
+        required: false
+        default: ""
+
+permissions:
+  contents: write   # commit autobook_state.json
+  actions: write    # keep-alive + refresh the calendar after a booking
+
+concurrency:
+  group: autobook
+  cancel-in-progress: false
+
+env:
+  TZ: America/Los_Angeles
+  PLAYWRIGHT_VERSION: "1.64.0"
+
+jobs:
+  autobook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      # ref: main (not the triggering commit) so a run that queued
+      # behind another sees that run's bookings in autobook_state.json
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-autobook.txt
+
+      - name: Install dependencies
+        timeout-minutes: 10
+        run: |
+          for i in 1 2 3; do
+            pip install -q -r requirements-autobook.txt && exit 0
+            [ $i = 3 ] && exit 1
+            sleep $((i * 20))
+          done
+
+      - name: Test booking rules
+        timeout-minutes: 5
+        run: |
+          python test_autobook.py
+          [ ! -f autobook_state.json ] || python -c "import json; json.load(open('autobook_state.json'))"
+
+      # A change to Beth's preferences in config.yaml is flagged here (red
+      # push run) but never stops booking
+      - name: Flag preference changes
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: python test_autobook.py --config
+
+      - name: Pick mode
+        id: mode
+        run: |
+          now=$((10#$(date +%H%M)))
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ $now -ge 300 ] && [ $now -lt 840 ]; then
+            echo "watch=true" >> "$GITHUB_OUTPUT"
+            echo "Morning run: watching until 8:40 AM"
+          fi
+
+      # GitHub disables scheduled workflows after 60 days without
+      # commits. Each of these re-enables the others, but leaves alone
+      # any workflow someone turned off by hand.
+      - name: Keep scheduled workflows alive
+        if: steps.mode.outputs.watch == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in sync.yml check-email.yml autobook.yml; do
+            state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq .state 2>/dev/null || echo unknown)
+            case "$state" in
+              active|disabled_inactivity)
+                gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf" ;;
+              *) echo "$wf: state '$state'; leaving it alone" ;;
+            esac
+          done
+
+      - name: Check what's due
+        id: check
+        if: steps.mode.outputs.watch != 'true' && github.event_name != 'workflow_dispatch'
+        timeout-minutes: 20
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+        run: python autobook.py --check
+
+      # Book on schedule runs when something's due even if the check
+      # step went red (it only does that when an alert email failed);
+      # never after failed tests (the check is then skipped: no targets).
+      # A failed install doesn't turn every run red: the booking step
+      # then fails to start the browser and emails Connor (once a day)
+      - name: Install browser
+        continue-on-error: true
+        if: >-
+          (!cancelled() && github.event_name == 'schedule' &&
+           (steps.mode.outputs.watch == 'true' || steps.check.outputs.targets != '')) ||
+          (success() && github.event_name == 'workflow_dispatch')
+        timeout-minutes: 15
+        run: |
+          for i in 1 2 3; do
+            pip install -q "playwright==$PLAYWRIGHT_VERSION" \
+              && python -m playwright install --with-deps chromium && exit 0
+            [ $i = 3 ] && exit 1
+            sleep $((i * 20))
+          done
+
+      - name: Watch the 8 AM sign-up opening
+        if: steps.mode.outputs.watch == 'true'
+        timeout-minutes: 345
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: python autobook.py --watch
+
+      - name: Book
+        if: >-
+          (!cancelled() && github.event_name == 'schedule' &&
+           steps.mode.outputs.watch != 'true' && steps.check.outputs.targets != '') ||
+          (success() && github.event_name == 'workflow_dispatch')
+        timeout-minutes: 30
+        env:
+          MINDBODY_EMAIL: ${{ secrets.MINDBODY_EMAIL }}
+          MINDBODY_PASSWORD: ${{ secrets.MINDBODY_PASSWORD }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'book' && '--dry-run' || '' }}
+          CLASS_ID: ${{ inputs.class_id }}
+        run: python autobook.py $DRY_RUN ${CLASS_ID:+--class-id "$CLASS_ID"}
+
+      # Screenshots of Beth's account are emailed to Connor, never
+      # uploaded: artifacts and logs on a public repo are world-readable.
+      - name: Commit booking state and refresh the calendar
+        if: always()
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash autobook_push_state.sh

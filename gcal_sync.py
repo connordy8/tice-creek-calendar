@@ -184,9 +184,9 @@ def class_status(cls, now):
 
     if cls.get("autobooked"):
         return ("\u2705 booked",
-                "BOOKED: The calendar bot signed Beth up for this class. "
-                "If she can't make it, she should cancel in the Mindbody "
-                "app so someone else gets the spot.")
+                "BOOKED: Beth is signed up for this class. If she can't "
+                "make it, she should cancel in the Mindbody app so "
+                "someone else gets the spot.")
     if cls.get("is_club") or cap <= 0:
         return ("drop-in",
                 "No sign-up needed: this is a drop-in class, just show up.")
@@ -494,7 +494,7 @@ def sync_to_google_calendar(classes, movies, concerts, config,
         ("appointments", appointments, build_manual_event),
     ]
     if classes is not None:
-        from zumba_autobook import booked_class_ids
+        from autobook import booked_class_ids
         ours = booked_class_ids()
         for c in classes:
             c["autobooked"] = c.get("mindbody_id") in ours

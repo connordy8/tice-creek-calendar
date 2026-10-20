@@ -47,8 +47,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for wf in sync.yml check-email.yml zumba-autobook.yml; do
-            gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf"
+          for wf in sync.yml check-email.yml autobook.yml; do
+            state=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq .state 2>/dev/null || echo unknown)
+            case "$state" in
+              active|disabled_inactivity)
+                gh workflow enable "$wf" --repo "$GITHUB_REPOSITORY" || echo "couldn't enable $wf" ;;
+              *) echo "$wf: state '$state'; leaving it alone" ;;
+            esac
           done
 
       - name: Set up Python
