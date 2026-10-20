@@ -3,7 +3,19 @@
     "signin:rejected": "2026-10-20T11:44:06.312351",
     "signin:stuck": "2026-10-20T11:25:59.289731"
   },
-  "bookings": {},
+  "bookings": {
+    "cinst_11YcvdHLTnFb5uy4R": {
+      "at": "2026-10-20T11:51:29.579543",
+      "attempts": 1,
+      "date": "2026-10-21",
+      "end": "2026-10-21T18:20",
+      "name": "Zumba",
+      "result": "booked",
+      "start": "2026-10-21T17:30",
+      "time": "5:30 PM",
+      "type": "zumba"
+    }
+  },
   "last_watch": "2026-10-20",
   "signin_pause": {}
 }
