@@ -16,14 +16,12 @@ name: Auto-Book Beth's Classes
 # just do a normal check afterwards.
 
 on:
-  # SCHEDULE OFF until MINDBODY_PASSWORD is updated and a dry run passes
-  # (uncomment both lines below to turn auto-booking on).
-  # schedule:
+  schedule:
     # Every 10 min, ~6 AM - 10 PM Pacific (UTC hours; PST shifts an
     # hour earlier). Off the :00 marks, which GitHub drops most often.
-    # - cron: "4,14,24,34,44,54 13-23,0-5 * * *"
+    - cron: "4,14,24,34,44,54 13-23,0-5 * * *"
     # Early-morning starts for the 8 AM watch (3-5 AM PDT / 2-4 AM PST)
-    # - cron: "9,29,49 10-12 * * *"
+    - cron: "9,29,49 10-12 * * *"
 
   # Code/config changes: run the rule tests and a check (never books)
   push:
