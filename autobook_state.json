@@ -1,5 +1,7 @@
 {
-  "alerts": {},
+  "alerts": {
+    "signin:stuck": "2026-10-20T11:25:59.289731"
+  },
   "bookings": {},
   "last_watch": "2026-10-20",
   "signin_pause": {}
