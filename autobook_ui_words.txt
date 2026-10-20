@@ -1,6 +1,7 @@
 # Words from Mindbody's own widget text (its i18n catalog, Oct 2026).
 # autobook.py logs only these words from signed-in screens; anything
 # else (e.g. Beth's name) is shown as a dot. Public repo: keep it so.
+a
 about
 above
 accept
@@ -134,6 +135,7 @@ carefully
 cart
 categories
 category
+change
 changes
 characters
 charge
@@ -311,6 +313,7 @@ fit
 fixing
 following
 for
+forgot
 found
 free
 frequency
@@ -352,6 +355,7 @@ inc
 include
 included
 includes
+incorrect
 incurring
 individual
 ineligible
@@ -412,7 +416,10 @@ location
 location's
 locationcount
 locations
+locked
 log
+logging
+login
 longer
 looking
 looks
@@ -617,6 +624,7 @@ required
 requires
 resend
 reserve
+reset
 responsible
 restart
 results
@@ -705,6 +713,7 @@ subtotal
 suggestions
 summary
 support
+supported
 sure
 tab
 take
@@ -781,6 +790,8 @@ verified
 verify
 via
 view
+visibility
+visibility_off
 visit
 visited
 voluntarily

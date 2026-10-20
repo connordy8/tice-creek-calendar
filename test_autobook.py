@@ -542,6 +542,19 @@ def test_signin_pause_backs_off_and_resets():
         os.environ.update(env)
 
 
+def test_signin_messages_are_recognised():
+    rejected = ["Incorrect email or password. Try again or send a code "
+                "instead.", "Please check your email and password",
+                "Incorrect password for the Mindbody account linked to "
+                "a@b.c. To access your account, reset your password."]
+    for t in rejected:
+        assert ab.REJECTED_RE.search(t) and not ab.LOCKED_RE.search(t), t
+    locked = "Too many attempts, account is locked. Reset your password "
+    assert ab.LOCKED_RE.search(locked)
+    assert ab.SIGNIN_ERROR_RE.search("Sorry something went wrong please "
+                                     "try again later")
+
+
 def test_gcal_listing_shows_booked():
     try:
         import gcal_sync

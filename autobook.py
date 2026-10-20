@@ -181,12 +181,21 @@ CARD_SELECTOR = ("input[autocomplete^=cc-], iframe[src*=pay], "
 # Sign-in pages
 OTP_RE = re.compile(r"enter the code|verification code|one-time|"
                     r"we sent (you )?a code|check your email", re.I)
-REJECTED_RE = re.compile(r"incorrect password|wrong password|"
-                         r"password (is )?incorrect|invalid (email|password|"
-                         r"credentials)|doesn'?t match", re.I)
-# Lockouts and rate limits: a timed pause, not "wrong password"
+# Mindbody's sign-in errors (signin.mindbodyonline.com's own text, Oct
+# 2026): "Incorrect email or password. Try again or send a code
+# instead.", "Please check your email and password", "Incorrect password
+# for the Mindbody account linked to ..."
+REJECTED_RE = re.compile(r"incorrect (email or )?password|wrong password|"
+                         r"password (is )?incorrect|check your email and "
+                         r"password|invalid (email|password|credentials)|"
+                         r"doesn'?t match", re.I)
+# Lockouts and rate limits ("Too many attempts, account is locked."): a
+# timed pause, not "wrong password"
 LOCKED_RE = re.compile(r"too many|try again later|temporarily locked|"
                        r"account (is )?locked", re.I)
+# Anything else on the sign-in page's error banner
+SIGNIN_ERROR_RE = re.compile(r"something went wrong|no longer supported|"
+                             r"don'?t have permission|staff only", re.I)
 # Row-button labels the widget uses for a class that can't be booked
 # (its i18n catalog); the book button itself is the widget's
 # bookButtonText ("Sign Up" at Tice Creek). Anything else is a change
@@ -796,9 +805,14 @@ class Booker:
                 if h.strip()][:6]
             buttons = [b.strip() for b in page.locator("button:visible")
                        .all_inner_texts() if b.strip()][:10]
-            return "{} | headings: {} | buttons: {}".format(
+            alerts = [a.strip() for a in page.locator(
+                "[role=alert], .MuiAlert-message, [data-testid=login-error]")
+                .all_inner_texts() if a.strip()][:3]
+            return "{} | headings: {} | buttons: {}{}".format(
                 path, _mask(" / ".join(heads))[:300],
-                _mask(" / ".join(buttons))[:300])
+                _mask(" / ".join(buttons))[:300],
+                " | message: " + _mask(" / ".join(alerts))[:300]
+                if alerts else "")
         except Exception as e:
             return "(couldn't describe screen: {})".format(type(e).__name__)
 
@@ -1018,14 +1032,18 @@ class Booker:
                     return
                 continue
             text = self._body(popup)
-            if REJECTED_RE.search(text):
-                self.snap(popup, "sign-in-rejected")
-                raise SignInError("Mindbody says the password is wrong",
-                                  "rejected")
             if LOCKED_RE.search(text):
                 self.snap(popup, "sign-in-locked")
                 raise SignInError("Mindbody says too many attempts / locked",
                                   "locked")
+            if REJECTED_RE.search(text):
+                self.snap(popup, "sign-in-rejected")
+                raise SignInError("Mindbody says the password is wrong",
+                                  "rejected")
+            if SIGNIN_ERROR_RE.search(text):
+                self.snap(popup, "sign-in-error")
+                raise SignInError("Mindbody's sign-in showed an error",
+                                  "stuck")
             if OTP_RE.search(text) and not _quiet(lambda: popup.locator(
                     "input[type=password]:visible").count(), 0):
                 self.snap(popup, "verification-code")
