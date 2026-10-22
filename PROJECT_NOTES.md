@@ -45,6 +45,7 @@ These came out of many rounds of feedback. Treat them as load-bearing — don't 
 
 ### Display tweaks she likes
 - Events start **15 minutes early** on the calendar so she has travel time. The true class time is in the description.
+- **Class descriptions are short (Oct 2026):** just the class with its real time, then "Enrolled", "Not enrolled" or "Drop-in, no sign-up needed" (plus any note from a forwarded email). Connor: "She knows what they are." No Mindbody blurb, sign-up instructions, instructor or room (the room is in the location).
 - Class **location** (e.g. "Serenity Studio", "Aerobics Studio", "Aquatics") appears in the event so she knows where to go.
 - Emoji prefixes make the calendar scannable: 🏋️ fitness, 🏊 aquatics, ✅ booked, ⏳ waitlist.
 - Waitlist entries have "(waitlist)" suffix. The "(From Waitlist - Unconfirmed)" Mindbody suffix is stripped out.

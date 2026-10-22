@@ -561,7 +561,9 @@ def test_gcal_listing_shows_booked():
     except ImportError:
         return  # google libs not installed locally
     tag, line = gcal_sync.class_status(dict(cls(), autobooked=True), NOW)
-    assert "booked" in tag and "cancel" in line.lower()
+    assert "booked" in tag and line == "Enrolled"
+    tag, line = gcal_sync.class_status(cls(), NOW)
+    assert "sign up" in tag and line == "Not enrolled"
 
 
 def main():

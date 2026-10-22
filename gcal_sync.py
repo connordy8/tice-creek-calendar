@@ -62,8 +62,6 @@ ALL_PREFIXES = (EVENT_ID_PREFIX, CLASS_EVENT_PREFIX, MANUAL_EVENT_PREFIX,
 
 TICE_CREEK_ADDRESS = (
     "Tice Creek Fitness Center, 1751 Tice Creek Dr, Walnut Creek, CA 94595")
-SIGNUP_URL = "https://www.ticefitnesscenter.com/schedule/"
-AQUATICS_SIGNUP_URL = "https://www.ticefitnesscenter.com/aquatic-schedule/"
 
 MASS_DELETE_MIN = 5          # always allow deleting up to this many
 MASS_DELETE_FRACTION = 0.5   # beyond that, refuse if > this fraction
@@ -176,37 +174,30 @@ def _class_display_name(cls, config):
 
 
 def class_status(cls, now):
-    """(short title tag, description line) for a class's sign-up state."""
+    """(short title tag, enrolled line) for a class's sign-up state.
+
+    Classes Beth booked herself aren't listed at all (her own calendar
+    entry stands in), so a listed class is enrolled only if we booked it.
+    """
     cap = cls.get("capacity", 0)
     left = cap - cls.get("registered", 0)
     opens = cls.get("booking_opens")
     opens_dt = datetime.fromisoformat(opens) if opens else None
 
     if cls.get("autobooked"):
-        return ("\u2705 booked",
-                "BOOKED: Beth is signed up for this class. If she can't "
-                "make it, she should cancel in the Mindbody app so "
-                "someone else gets the spot.")
+        return ("\u2705 booked", "Enrolled")
     if cls.get("is_club") or cap <= 0:
-        return ("drop-in",
-                "No sign-up needed: this is a drop-in class, just show up.")
+        return ("drop-in", "Drop-in, no sign-up needed")
     if opens_dt and now < opens_dt:
-        when = "{} at {}".format(opens_dt.strftime("%a %b %-d"),
-                                 _fmt_time(opens_dt))
-        return ("sign-up opens {}".format(opens_dt.strftime("%a")),
-                "SIGN-UP REQUIRED. Sign-up opens {} ({} spots).".format(
-                    when, cap))
-    if cls.get("bookable"):
-        if 0 < left <= cap:
-            return ("sign up · {} left".format(left),
-                    "SIGN-UP REQUIRED. Spots available: {} of {} left."
-                    .format(left, cap))
-        return ("sign up",
-                "SIGN-UP REQUIRED. Spots are available.")
-    if cls.get("waitlistable"):
-        return ("FULL · waitlist",
-                "SIGN-UP REQUIRED. Class is full, but the waitlist is open.")
-    return ("FULL", "SIGN-UP REQUIRED. Class is full (no waitlist).")
+        tag = "sign-up opens {}".format(opens_dt.strftime("%a"))
+    elif cls.get("bookable"):
+        tag = ("sign up · {} left".format(left) if 0 < left <= cap
+               else "sign up")
+    elif cls.get("waitlistable"):
+        tag = "FULL · waitlist"
+    else:
+        tag = "FULL"
+    return (tag, "Not enrolled")
 
 
 def build_class_event(cls, config, now):
@@ -215,33 +206,17 @@ def build_class_event(cls, config, now):
         "default_class_duration_minutes", 45)
     end = start + timedelta(minutes=dur)
     early = config.get("early_start_minutes", 0)
-    tag, status_line = class_status(cls, now)
+    tag, enrolled = class_status(cls, now)
     aquatic = cls.get("is_aquatics")
     emoji = "\U0001f3ca" if aquatic else "\U0001f3cb️"
     name = _class_display_name(cls, config)
 
-    lines = [status_line]
-    if tag not in ("drop-in", "\u2705 booked"):
-        lines.append("Beth signs up herself on the Mindbody app or at {}"
-                     .format(AQUATICS_SIGNUP_URL if aquatic else SIGNUP_URL))
-        lines.append("(This listing can't see Beth's own bookings. If "
-                     "she's already signed up, she's all set.)")
-    lines.append("")
-    lines.append("Class time: {} - {} ({} min). Calendar starts {} min "
-                 "early for travel.".format(_fmt_time(start),
-                                            _fmt_time(end), dur, early))
-    if cls.get("instructor"):
-        lines.append("Instructor: {}".format(cls["instructor"]))
-    if cls.get("room"):
-        lines.append("Room: {}".format(cls["room"]))
+    # Beth knows the classes: just which one (with its real time, since
+    # the event starts early for travel) and whether she's enrolled.
+    lines = ["{}, {} - {}".format(name, _fmt_time(start), _fmt_time(end)),
+             enrolled]
     if cls.get("email_notes"):
         lines.append("Note: {}".format(cls["email_notes"]))
-    if cls.get("description"):
-        lines.append("")
-        lines.append(cls["description"])
-    lines.append("")
-    lines.append("Availability as of {}.".format(
-        now.strftime("%a %b %-d, %-I:%M %p")))
 
     location = TICE_CREEK_ADDRESS
     if cls.get("room"):
@@ -424,9 +399,7 @@ def _needs_update(old, new):
     for k in ("summary", "location", "colorId"):
         if (old.get(k) or "") != (new.get(k) or ""):
             return True
-    # Ignore the "as of" timestamp so classes aren't rewritten every run
-    strip = lambda d: re.sub(r"Availability as of .*", "", d or "")
-    if strip(old.get("description")) != strip(new.get("description")):
+    if (old.get("description") or "") != (new.get("description") or ""):
         return True
     for k in ("start", "end"):
         a = old.get(k, {}).get("dateTime")
