@@ -36,8 +36,19 @@
       "start": "2026-10-25T14:00",
       "time": "2:00 PM",
       "type": "zumba"
+    },
+    "cinst_11YcvdHLTnFb5vrZ3": {
+      "at": "2026-10-25T07:21:55.031206",
+      "attempts": 1,
+      "date": "2026-10-26",
+      "end": "2026-10-26T18:20",
+      "name": "Zumba",
+      "result": "booked",
+      "start": "2026-10-26T17:30",
+      "time": "5:30 PM",
+      "type": "zumba"
     }
   },
-  "last_watch": "2026-10-24",
+  "last_watch": "2026-10-25",
   "signin_pause": {}
 }
