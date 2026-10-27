@@ -1,7 +1,6 @@
 {
   "alerts": {
-    "signin:rejected": "2026-10-20T11:44:06.312351",
-    "signin:stuck": "2026-10-20T11:25:59.289731"
+    "signin:rejected": "2026-10-20T11:44:06.312351"
   },
   "bookings": {
     "cinst_11YcvdHLTnFb5uy4R": {
