@@ -34,6 +34,17 @@
       "time": "1:00 PM",
       "type": "zumba"
     },
+    "cinst_11YcvdHLTnFb5uyh3": {
+      "at": "2026-10-29T01:43:51.185340",
+      "attempts": 1,
+      "date": "2026-10-30",
+      "end": "2026-10-30T13:50",
+      "name": "Zumba",
+      "result": "booked",
+      "start": "2026-10-30T13:00",
+      "time": "1:00 PM",
+      "type": "zumba"
+    },
     "cinst_11YcvdHLTnFb5vrY2": {
       "at": "2026-10-24T00:13:41.995218",
       "attempts": 1,
