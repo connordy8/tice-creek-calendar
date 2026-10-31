@@ -1,15 +1,1 @@
-[
-  {
-    "uid": "31e40ca8fb155d09",
-    "type": "add",
-    "title": "Eye appointment with Dr. Rahul Raghu",
-    "date": "2026-07-14",
-    "start_time": "14:00",
-    "end_time": "16:00",
-    "location": "East Bay Eye Centers, 5801 Norris Canyon Rd Ste. 200, San Ramon, CA 94583",
-    "notes": "Appointment will involve dilation. Bring completed forms, photo ID, and insurance card(s). Allow 2 hours for appointment.",
-    "source": "East Bay Eye Centers Front Desk confirmation",
-    "confidence": 0.95,
-    "created": "2026-04-19 13:19"
-  }
-]
+[]
