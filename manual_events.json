@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "uid": "01fcb9db969c3c08",
+    "type": "modify",
+    "title": "Carol's Zumba Club (Liz subbing)",
+    "date": "2026-11-10",
+    "start_time": "09:45",
+    "end_time": "",
+    "location": "Tice Creek Fitness Center",
+    "notes": "Instructor change: Liz will teach instead of Kim, who is on vacation. Start time is Carol's Zumba Club's usual Tuesday time, not stated in the email.",
+    "source": "Carol Lehr, Zumba Club organizer",
+    "confidence": 0.85,
+    "created": "2026-11-05 04:16",
+    "original_class": "carol's zumba club"
+  },
+  {
+    "uid": "c12d00d46e77b64c",
+    "type": "modify",
+    "title": "Carol's Zumba Club (Liz subbing)",
+    "date": "2026-11-17",
+    "start_time": "09:45",
+    "end_time": "",
+    "location": "Tice Creek Fitness Center",
+    "notes": "Instructor change: Liz will teach instead of Kim, who is on vacation. Start time is Carol's Zumba Club's usual Tuesday time, not stated in the email.",
+    "source": "Carol Lehr, Zumba Club organizer",
+    "confidence": 0.85,
+    "created": "2026-11-05 04:16",
+    "original_class": "carol's zumba club"
+  }
+]
