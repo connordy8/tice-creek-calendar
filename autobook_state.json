@@ -1,7 +1,5 @@
 {
-  "alerts": {
-    "watch-missed": "2026-10-30T09:40:56.968086"
-  },
+  "alerts": {},
   "bookings": {
     "cinst_11YcvdHLTnFb5uy4R": {
       "at": "2026-10-20T11:51:29.579543",
