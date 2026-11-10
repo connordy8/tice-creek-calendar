@@ -1,5 +1,7 @@
 {
-  "alerts": {},
+  "alerts": {
+    "schedule:aquatics": "2026-11-10T12:26:02.389037"
+  },
   "bookings": {
     "cinst_11YcvdHLTnFb5uy4R": {
       "at": "2026-10-20T11:51:29.579543",
