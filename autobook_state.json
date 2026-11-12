@@ -3,17 +3,6 @@
     "schedule:aquatics": "2026-11-10T12:26:02.389037"
   },
   "bookings": {
-    "cinst_11YcvdHLTnFb5uy4R": {
-      "at": "2026-10-20T11:51:29.579543",
-      "attempts": 1,
-      "date": "2026-10-21",
-      "end": "2026-10-21T18:20",
-      "name": "Zumba",
-      "result": "booked",
-      "start": "2026-10-21T17:30",
-      "time": "5:30 PM",
-      "type": "zumba"
-    },
     "cinst_11YcvdHLTnFb5uy5S": {
       "at": "2026-10-27T00:53:47.293821",
       "attempts": 1,
@@ -77,6 +66,17 @@
       "name": "Zumba",
       "result": "booked",
       "start": "2026-11-06T13:00",
+      "time": "1:00 PM",
+      "type": "zumba"
+    },
+    "cinst_11YcvdHLTnFb5uyj5": {
+      "at": "2026-11-12T01:42:49.514978",
+      "attempts": 1,
+      "date": "2026-11-13",
+      "end": "2026-11-13T13:50",
+      "name": "Zumba",
+      "result": "booked",
+      "start": "2026-11-13T13:00",
       "time": "1:00 PM",
       "type": "zumba"
     },
