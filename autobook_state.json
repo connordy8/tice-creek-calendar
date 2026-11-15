@@ -1,5 +1,6 @@
 {
   "alerts": {
+    "error": "2026-11-15T15:27:06.537948",
     "schedule:aquatics": "2026-11-10T12:26:02.389037"
   },
   "bookings": {
@@ -90,6 +91,18 @@
       "start": "2026-10-26T17:30",
       "time": "5:30 PM",
       "type": "zumba"
+    },
+    "cinst_11YcvdHLTnFb5vsTw": {
+      "at": "2026-11-15T15:27:02.361091",
+      "attempts": 1,
+      "date": "2026-11-16",
+      "end": "2026-11-16T12:20",
+      "error": "The schedule \u2022 button \u2022 '', not 'Sign \u2022 or a \u2022 full/closed \u2022: the \u2022 \u2022 have \u2022",
+      "name": "Aqua: Aquacise",
+      "result": "error",
+      "start": "2026-11-16T11:30",
+      "time": "11:30 AM",
+      "type": "aquacise"
     }
   },
   "last_watch": "2026-11-14",
