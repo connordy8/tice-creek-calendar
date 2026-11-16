@@ -70,17 +70,6 @@
       "time": "1:00 PM",
       "type": "zumba"
     },
-    "cinst_11YcvdHLTnFb5vrY2": {
-      "at": "2026-10-24T00:13:41.995218",
-      "attempts": 1,
-      "date": "2026-10-25",
-      "end": "2026-10-25T14:50",
-      "name": "Zumba",
-      "result": "booked",
-      "start": "2026-10-25T14:00",
-      "time": "2:00 PM",
-      "type": "zumba"
-    },
     "cinst_11YcvdHLTnFb5vrZ3": {
       "at": "2026-10-25T07:21:55.031206",
       "attempts": 1,
@@ -93,13 +82,12 @@
       "type": "zumba"
     },
     "cinst_11YcvdHLTnFb5vsTw": {
-      "at": "2026-11-15T19:00:12.577344",
-      "attempts": 2,
+      "at": "2026-11-16T02:59:38.653059",
+      "attempts": 3,
       "date": "2026-11-16",
       "end": "2026-11-16T12:20",
-      "error": "The schedule \u2022 button \u2022 '', not 'Sign \u2022 or a \u2022 full/closed \u2022: the \u2022 \u2022 have \u2022",
       "name": "Aqua: Aquacise",
-      "result": "error",
+      "result": "booked",
       "start": "2026-11-16T11:30",
       "time": "11:30 AM",
       "type": "aquacise"
