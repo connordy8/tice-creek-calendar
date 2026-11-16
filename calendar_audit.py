@@ -160,7 +160,7 @@ def audit(days, send):
         (notes if kind == "update" else issues).append(
             "Calendar out of date, next sync will {}: {} {}".format(
             kind, _when(body) if body.get("start") else "",
-            body.get("summary", kw.get("eventId", "")))))
+            body.get("summary", kw.get("eventId", ""))))
 
     # 2. Bookings vs calendar ✅
     booked = {k: v for k, v in state.items() if v.get("result") == "booked"
