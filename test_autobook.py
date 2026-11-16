@@ -150,6 +150,21 @@ def test_class_types():
 
 # --- when a class is due -------------------------------------------------
 
+def test_blank_book_button_is_the_book_button():
+    # Tice Creek's aquatics schedule has a blank book-button label
+    booker = ab.Booker()
+    booker._book_label = ""
+    assert booker._row_state("") == "book"
+    assert booker._row_state("Full") == "unavailable"
+    booker._book_label = "Sign Up"
+    assert booker._row_state("Sign Up") == "book"
+    try:
+        booker._row_state("")
+        assert False, "a blank button must not count as Sign Up"
+    except ab.BookingError:
+        pass
+
+
 def test_day_before_is_due():
     assert plan([cls(date=TOMORROW, reg=3)])
 

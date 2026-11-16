@@ -827,11 +827,12 @@ class Booker:
         page = self.page
         page.goto(self.widget_url(cls["source"]),
                   wait_until="domcontentloaded")
-        # The gym can rename its book button ("Sign Up" today)
-        m = re.search(r'\\?"bookButtonText\\?":\\?"([^"\\]{1,40})',
+        # The gym can rename its book button ("Sign Up" on the fitness
+        # schedule). The aquatics schedule leaves it blank (Nov 2026), so
+        # its book button is an unlabeled filled button.
+        m = re.search(r'\\?"bookButtonText\\?":\\?"([^"\\]{0,40})',
                       _quiet(page.content, ""))
-        if m:
-            self._book_label = m.group(1).strip()
+        self._book_label = m.group(1).strip() if m else "Sign Up"
         page.locator("div[role=button]").first.wait_for(timeout=30000)
         # Signed in, the widget restores the session right after loading;
         # a click before that opens the sign-in popup again
@@ -1058,8 +1059,14 @@ class Booker:
         """Click the row's book button (matched by its label, so a
         re-render can't redirect the click) and see what Mindbody does.
         Returns "cart", "already", "maybe" or "nothing"."""
-        btn = row.get_by_role("button", name=re.compile(
-            r"^\s*{}\s*$".format(re.escape(self._book_label)), re.I))
+        if self._book_label:
+            btn = row.get_by_role("button", name=re.compile(
+                r"^\s*{}\s*$".format(re.escape(self._book_label)), re.I))
+        else:
+            # The widget's book text is blank: the row's filled button
+            # with no text (Full/Cancelled/etc. always have text)
+            btn = row.locator("button.MuiButton-contained").filter(
+                has_not_text=re.compile(r"\S"))
         if btn.count() != 1:
             raise BookingError("Row has {} '{}' buttons".format(
                 btn.count(), self._book_label))
