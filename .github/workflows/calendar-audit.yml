@@ -1,0 +1,34 @@
+name: Audit Beth's Calendar
+
+# Read-only: checks her calendar against the schedule and booking
+# rules and emails Connor the report. The log shows counts only.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days ahead to check"
+        default: "14"
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml anthropic google-auth google-api-python-client pdfplumber
+      - name: Audit
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          CALENDAR_EMAIL: bethcalendarupdate@gmail.com
+          CALENDAR_EMAIL_PASSWORD: ${{ secrets.CALENDAR_EMAIL_PASSWORD }}
+        run: python calendar_audit.py --days "${{ inputs.days }}"
