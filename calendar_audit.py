@@ -3,8 +3,8 @@
 
 Runs the normal sync logic as a dry run (read-only credentials, every
 write intercepted) to see what it *would* change, then checks the
-calendar against the booking rules. Emails Connor the full report; the
-(public) Actions log only gets counts, never Beth's own events.
+calendar against the booking rules. Emails Connor the report and prints it to the (public) Actions
+log with the names of Beth's own events blanked out.
 
   python calendar_audit.py [--days 14] [--no-email]
 """
@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -70,7 +70,7 @@ def readonly_service():
 
 def fetch_events(svc, days):
     cal = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     out, tok = [], None
     while True:
         r = svc.events().list(
@@ -284,7 +284,12 @@ def audit(days, send):
             _when(c), c["summary"], lines[1] if len(lines) > 1 else "?"))
     report = "\n".join(summary)
 
-    # Public log: counts only
+    # Public log: same report with her own events' names blanked out
+    safe = report
+    for b in beths:
+        if b.get("summary"):
+            safe = safe.replace("'{}'".format(b["summary"]), "(one of her events)")
+    print(safe)
     print("Events: {}  bot-managed: {}  classes: {}  bookings: {}  "
           "problems: {}  fyi: {}".format(len(items), len(ours), len(classes),
                                           len(booked), len(issues),
@@ -294,8 +299,6 @@ def audit(days, send):
         send_email("Beth calendar audit: {}".format(
             "{} problem(s)".format(len(issues)) if issues else "all good"),
             report)
-    else:
-        print(report)
     return 1 if issues else 0
 
 

@@ -1,7 +1,7 @@
 name: Audit Beth's Calendar
 
 # Read-only: checks her calendar against the schedule and booking
-# rules and emails Connor the report. The log shows counts only.
+# rules and emails Connor the report. The log blanks out her own events.
 on:
   workflow_dispatch:
     inputs:
