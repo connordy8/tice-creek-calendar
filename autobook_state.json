@@ -70,17 +70,6 @@
       "time": "1:00 PM",
       "type": "zumba"
     },
-    "cinst_11YcvdHLTnFb5vrZ3": {
-      "at": "2026-10-25T07:21:55.031206",
-      "attempts": 1,
-      "date": "2026-10-26",
-      "end": "2026-10-26T18:20",
-      "name": "Zumba",
-      "result": "booked",
-      "start": "2026-10-26T17:30",
-      "time": "5:30 PM",
-      "type": "zumba"
-    },
     "cinst_11YcvdHLTnFb5vsTw": {
       "at": "2026-11-16T02:59:38.653059",
       "attempts": 3,
@@ -93,6 +82,6 @@
       "type": "aquacise"
     }
   },
-  "last_watch": "2026-11-14",
+  "last_watch": "2026-11-17",
   "signin_pause": {}
 }
