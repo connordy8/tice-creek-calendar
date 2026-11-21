@@ -6,6 +6,13 @@
   "title": "9 to 5",
   "year": "1980"
  },
+ "a dog s perfect christmas|2026": {
+  "description": "A Dog's Perfect Christmas is a 2026 Christmas film based on the novel of the same name by W. Bruce Cameron. The film stars Dennis Quaid, Milo Ventimiglia, Brooke Lena Johnson, Jennifer Tilly and Mary Steenburgen.",
+  "rt_score": "33%",
+  "rt_url": "https://www.rottentomatoes.com/m/a_dogs_perfect_christmas",
+  "title": "A Dog's Perfect Christmas",
+  "year": "2026"
+ },
  "ace ventura|1995": {
   "description": "Ace Ventura: Pet Detective is a 1994 American comedy film starring Jim Carrey as Ace Ventura, an animal detective who is tasked with finding the abducted dolphin mascot of the Miami Dolphins football team. The film is directed by Tom Shadyac, who wrote the screenplay with Jack Bernstein and Carrey. The film co-stars Courteney Cox, Tone Loc, Sean Young, and then–Miami Dolphins quarterback Dan Marino and features a cameo appearance from death metal band Cannibal Corpse.",
   "rt_score": "48%",
@@ -41,11 +48,23 @@
   "title": "Dirty Rotten Scoundrels",
   "year": "1988"
  },
+ "eternity|2025": {
+  "rt_score": "76%",
+  "rt_url": "https://www.rottentomatoes.com/m/eternity_2025",
+  "title": "Eternity",
+  "year": "2025"
+ },
  "famous last words gloria steinem|2026": {
   "description": "An episode of Netflix's Famous Last Words series: a 46-minute interview Gloria Steinem recorded in February 2025, held for release until after her death. She talks openly about founding Ms. magazine, her loves and family, conflicts inside the feminist movement and her regrets, and ends with a message to the next generation.",
   "locked": true,
   "title": "Famous Last Words-Gloria Steinem",
   "year": "2026"
+ },
+ "going in style|2017": {
+  "rt_score": "47%",
+  "rt_url": "https://www.rottentomatoes.com/m/going_in_style_2017",
+  "title": "Going In Style",
+  "year": "2017"
  },
  "good fortune|2025": {
   "description": "Gabriel (Keanu Reeves), a well-meaning but bumbling guardian angel, tries to teach a struggling gig worker (Aziz Ansari) a lesson by swapping his life with that of a wealthy venture capitalist (Seth Rogen). The plan backfires in unexpected ways in this comedy about money, class, and what makes a life good. Ansari also wrote and directed.",
@@ -53,6 +72,18 @@
   "rt_score": "79%",
   "title": "Good Fortune",
   "year": "2025"
+ },
+ "it s a wonderful life|1946": {
+  "rt_score": "94%",
+  "rt_url": "https://www.rottentomatoes.com/m/its_a_wonderful_life",
+  "title": "It's A Wonderful Life",
+  "year": "1946"
+ },
+ "love the coopers|2015": {
+  "rt_score": "19%",
+  "rt_url": "https://www.rottentomatoes.com/m/love_the_coopers",
+  "title": "Love The Coopers",
+  "year": "2015"
  },
  "made of honor|2008": {
   "description": "Made of Honor is a 2008 American romantic comedy film directed by Paul Weiland and written by Adam Sztykiel, Deborah Kaplan, and Harry Elfont. The film stars Patrick Dempsey, Michelle Monaghan, and Sydney Pollack.",
@@ -92,12 +123,25 @@
   "title": "Play Misty For Me",
   "year": "1971"
  },
+ "practical magic 2|2026": {
+  "description": "Practical Magic 2 is a 2026 American romantic fantasy film directed by Susanne Bier from a screenplay by Akiva Goldsman, Georgia Pritchett, and Kelly Marcel, based on the 2021 novel The Book of Magic by Alice Hoffman. The sequel to Practical Magic (1998), the film stars Sandra Bullock, Nicole Kidman, Dianne Wiest, and Stockard Channing reprising their roles from the previous film, alongside new cast members Joey King, Lee Pace, Maisie Williams, and Xolo Maridueña.",
+  "rt_score": "35%",
+  "rt_url": "https://www.rottentomatoes.com/m/practical_magic_2",
+  "title": "Practical Magic 2",
+  "year": "2026"
+ },
  "pretty woman|1990": {
   "description": "Edward (Richard Gere), a ruthless corporate raider visiting Los Angeles, pays Vivian (Julia Roberts), a spirited Hollywood Boulevard escort, to spend a week as his companion at business and social events. As she navigates his world of luxury and he loosens up in her company, real affection grows, and both must decide whether a romance across such different lives can last.",
   "locked": true,
   "rt_score": "65%",
   "title": "Pretty Woman",
   "year": "1990"
+ },
+ "sctv the greatest show you never saw|2026": {
+  "rt_score": "100%",
+  "rt_url": "https://www.rottentomatoes.com/m/sctv_the_greatest_show_youve_never_heard_of",
+  "title": "SCTV-The Greatest Show You Never Saw",
+  "year": "2026"
  },
  "steel magnolias|1989": {
   "description": "In a small Louisiana town, a close group of women meets regularly at the local beauty salon. The story follows them through weddings, births and arguments, and centers on a young diabetic bride (Julia Roberts) whose risky pregnancy worries her mother (Sally Field). When tragedy hits, the friends lean on each other with humor and grit.",
@@ -141,6 +185,13 @@
   "title": "The Prom",
   "year": "2020"
  },
+ "the social reckoning|2026": {
+  "description": "The Social Reckoning is a 2026 American biographical legal thriller film written, co-produced, and directed by Aaron Sorkin. A follow-up to The Social Network (2010), it dramatizes the 2021 Facebook leak by the whistleblower Frances Haugen and Jeff Horwitz. It stars Mikey Madison, Jeremy Allen White, Jeremy Strong, Bill Burr, Wunmi Mosaku, Betty Gilpin, and Billy Magnussen.",
+  "rt_score": "54%",
+  "rt_url": "https://www.rottentomatoes.com/m/the_social_reckoning",
+  "title": "The Social Reckoning",
+  "year": "2026"
+ },
  "the whisper man|2026": {
   "description": "When his young son is abducted, a grieving crime novelist reluctantly asks for help from his estranged father, a retired police detective. Their search points to a decades-old unsolved case involving a child killer known as 'The Whisper Man.' Adapted from Alex North's bestselling thriller novel.",
   "locked": true,
@@ -160,12 +211,25 @@
   "title": "Two Jakes",
   "year": "1990"
  },
+ "west side story|2021": {
+  "description": "West Side Story is a 2021 American musical romantic drama film directed and produced by Steven Spielberg and written by Tony Kushner. The second feature-length adaptation of the 1957 stage musical, itself inspired by William Shakespeare's play Romeo and Juliet, it stars Ansel Elgort as Tony and Rachel Zegler as María, with Ariana DeBose, David Alvarez, Mike Faist, and Rita Moreno in supporting roles. Moreno, who starred in the 1961 film adaptation, also served as an executive producer alongsi...",
+  "rt_score": "91%",
+  "rt_url": "https://www.rottentomatoes.com/m/west_side_story_2021",
+  "title": "West Side Story",
+  "year": "2021"
+ },
  "what s your number|2011": {
   "description": "What's Your Number? is a 2011 American romantic comedy film directed by Mark Mylod, starring Anna Faris and Chris Evans. Written by Gabrielle Allan and Jennifer Crittenden, the film is based on Karyn Bosnak's book 20 Times a Lady.",
   "rt_score": "23%",
   "rt_url": "https://www.rottentomatoes.com/m/whats_your_number",
   "title": "What's Your Number?",
   "year": "2011"
+ },
+ "where the sidewalk ends|1950": {
+  "rt_score": "100%",
+  "rt_url": "https://www.rottentomatoes.com/m/where_the_sidewalk_ends",
+  "title": "Where The Sidewalk Ends",
+  "year": "1950"
  },
  "yacht rock a documentary|2024": {
   "description": "This HBO documentary traces the smooth West Coast soft rock of the late 1970s and early 1980s, from artists like Michael McDonald, Kenny Loggins, Christopher Cross, Steely Dan and Toto. It follows the genre from chart success, to backlash, to its comeback as the beloved 'yacht rock' label that took off after a 2005 web parody series.",
