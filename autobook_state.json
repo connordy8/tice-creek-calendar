@@ -3,6 +3,17 @@
     "error": "2026-11-15T15:27:06.537948"
   },
   "bookings": {
+    "cinst_11YcvdHLTnFb5rw7T": {
+      "at": "2026-11-21T23:10:37.893124",
+      "attempts": 1,
+      "date": "2026-11-23",
+      "end": "2026-11-23T12:20",
+      "name": "Aqua: Aquacise",
+      "result": "booked",
+      "start": "2026-11-23T11:30",
+      "time": "11:30 AM",
+      "type": "aquacise"
+    },
     "cinst_11YcvdHLTnFb5uv8Y": {
       "at": "2026-11-18T08:07:34.592884",
       "attempts": 1,
