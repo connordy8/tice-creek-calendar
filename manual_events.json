@@ -26,5 +26,19 @@
     "confidence": 0.85,
     "created": "2026-11-05 04:16",
     "original_class": "carol's zumba club"
+  },
+  {
+    "uid": "b0d3021060dbb69f",
+    "type": "modify",
+    "title": "Carol's Zumba Club (Liz substituting)",
+    "date": "2026-11-24",
+    "start_time": "09:45",
+    "end_time": "",
+    "location": "Tice Creek Fitness Center",
+    "notes": "Instructor change: Liz will teach instead of Kim because Kim's mother is very ill. The class time is not in the email; 9:45 AM is the usual Tuesday time for Carol's Zumba Club.",
+    "source": "Carol Lehr (Zumba club organizer)",
+    "confidence": 0.85,
+    "created": "2026-11-24 01:28",
+    "original_class": "carol's zumba club"
   }
 ]
