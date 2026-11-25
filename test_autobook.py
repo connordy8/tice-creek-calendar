@@ -579,6 +579,10 @@ def test_gcal_listing_shows_booked():
     assert "booked" in tag and line == "Enrolled"
     tag, line = gcal_sync.class_status(cls(), NOW)
     assert "sign up" in tag and line == "Not enrolled"
+    for full in [cls(reg=25, bookable=False),
+                 dict(cls(reg=30, bookable=False), waitlistable=True)]:
+        assert gcal_sync.class_status(full, NOW)[0] == \
+            "Full online: call to confirm"
 
 
 def main():

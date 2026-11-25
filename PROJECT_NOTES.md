@@ -14,7 +14,7 @@ An automated calendar system for Beth (Connor's mom) at Rossmoor 55+ community i
 2. **Rossmoor Peacock Hall** — movies and concerts scraped from myrossmoor.com/events-calendar
 3. **Email-based manual events** — Connor forwards emails (e.g. appointments) and Claude parses them into calendar entries
 
-Since May 2026 the system mostly does **not** book classes. It *lists* every class Beth likes, with sign-up status in the title ("sign up · 4 left", "FULL · waitlist", "drop-in", "sign-up opens Mon"), and Beth signs up herself. **Exception (Oct 2026): her favorite classes are auto-booked** by `autobook.py`, see "Class auto-booking" below. Movies show the Rotten Tomatoes score in the title and a plot summary in the description.
+Since May 2026 the system mostly does **not** book classes. It *lists* every class Beth likes, with sign-up status in the title ("sign up · 4 left", "Full online: call to confirm", "drop-in", "sign-up opens Mon"; Tice Creek keeps ~30% of each class for phone/walk-in sign-ups and lets members stand by, so "full online" isn't necessarily full), and Beth signs up herself. **Exception (Oct 2026): her favorite classes are auto-booked** by `autobook.py`, see "Class auto-booking" below. Movies show the Rotten Tomatoes score in the title and a plot summary in the description.
 
 - **Local path:** `/Users/connordy/tice-creek-calendar`
 - **GitHub:** `https://github.com/connordy8/tice-creek-calendar`

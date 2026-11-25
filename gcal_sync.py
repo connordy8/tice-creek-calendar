@@ -193,10 +193,10 @@ def class_status(cls, now):
     elif cls.get("bookable"):
         tag = ("sign up · {} left".format(left) if 0 < left <= cap
                else "sign up")
-    elif cls.get("waitlistable"):
-        tag = "FULL · waitlist"
     else:
-        tag = "FULL"
+        # Full for online sign-up only: Tice Creek keeps ~30% of spots
+        # for phone/walk-in sign-ups, and she can stand by for no-shows
+        tag = "Full online: call to confirm"
     return (tag, "Not enrolled")
 
 
